@@ -382,11 +382,11 @@ void PPU::step()
             }
         }
         
-        // Sprite pattern fetches at cycle 321-340
-        if (cycle >= 321 && cycle <= 340 && scanline < 240) {
-            int fetch_cycle = (cycle - 321) / 8;
+        // Sprite pattern fetches at cycles 257-320 (64 cycles for 8 sprites)
+        if (cycle >= 257 && cycle <= 320 && scanline < 240) {
+            int fetch_cycle = (cycle - 257) / 8;
             if (fetch_cycle < sprite_count) {
-                int phase = (cycle - 321) % 8;
+                int phase = (cycle - 257) % 8;
                 
                 if (phase == 0) {
                     // Start fetching this sprite
@@ -461,17 +461,17 @@ void PPU::step()
             at_shifter_lo <<= 1;
             at_shifter_hi <<= 1;
 
-            // Load attribute shifters
-            if (at_latch_lo) at_shifter_lo |= 1;
-            if (at_latch_hi) at_shifter_hi |= 1;
+            // At cycle 1, load pattern and attribute data into shifters
+            if ((cycle & 0x07) == 1) {
+                // Load shifters with pattern data (8 bits at once)
+                bg_shifter_lo = (bg_shifter_lo & 0xFF00) | bg_lo;
+                bg_shifter_hi = (bg_shifter_hi & 0xFF00) | bg_hi;
+                at_shifter_lo = (at_shifter_lo & 0xFF00) | ((at_byte & 1) ? 0xFF : 0x00);
+                at_shifter_hi = (at_shifter_hi & 0xFF00) | ((at_byte & 2) ? 0xFF : 0x00);
+            }
 
             switch (cycle & 0x07) {
                 case 1:  // Nametable byte
-                    // Load shifters
-                    bg_shifter_lo = (bg_shifter_lo & 0xFF00) | bg_lo;
-                    bg_shifter_hi = (bg_shifter_hi & 0xFF00) | bg_hi;
-                    at_latch_lo = (at_byte & 1) ? 0xFF : 0;
-                    at_latch_hi = (at_byte & 2) ? 0xFF : 0;
                     nt_byte = ppuRead(0x2000 | (v & 0x0FFF));
                     break;
                 case 3:  // Attribute byte
