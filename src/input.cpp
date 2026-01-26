@@ -13,18 +13,20 @@ void Input::updateFromKeyboard()
     
     // Map keyboard to NES controller
     // Arrow keys for D-pad
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up))    controller_state |= BUTTON_UP;
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down))  controller_state |= BUTTON_DOWN;
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left))  controller_state |= BUTTON_LEFT;
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) controller_state |= BUTTON_RIGHT;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))    controller_state |= BUTTON_UP;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))  controller_state |= BUTTON_DOWN;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left))  controller_state |= BUTTON_LEFT;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right)) controller_state |= BUTTON_RIGHT;
     
-    // Z = A, X = B
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Z))     controller_state |= BUTTON_A;
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::X))     controller_state |= BUTTON_B;
+    // Z/J = A, X/K = B (multiple bindings to avoid ghosting)
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Z) ||
+        sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space)) controller_state |= BUTTON_A;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::X) ||
+        sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift)) controller_state |= BUTTON_B;
     
     // Enter = Start, RShift = Select
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Enter)) controller_state |= BUTTON_START;
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::RShift)) controller_state |= BUTTON_SELECT;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Enter)) controller_state |= BUTTON_START;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RShift)) controller_state |= BUTTON_SELECT;
 }
 
 void Input::strobe()

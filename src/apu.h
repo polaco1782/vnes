@@ -2,27 +2,26 @@
 #define APU_H
 
 #include "types.h"
+#include "sound.h"
 #include <cstdint>
 
 class Sound;
+class Bus;
 
 class APU {
 public:
-    APU();
+    explicit APU(Bus& bus);
 
     void reset();
     void step();
-    
-    // Connect sound output
-    void connect(Sound* snd);
 
     // CPU interface (registers $4000-$4017)
     u8 readRegister(u16 addr);
     void writeRegister(u16 addr, u8 data);
 
     // Frame counter IRQ
-    bool isIRQ() const { return irq_flag; }
-    void clearIRQ() { irq_flag = false; }
+    bool isIRQ() const { return irq_flag || dmc.irq_flag; }
+    void clearIRQ() { irq_flag = false; dmc.irq_flag = false; }
 
     // For debugger - channel status
     struct ChannelStatus {
@@ -56,9 +55,12 @@ public:
 
 private:
     void clockTimers();
+    void clockTriangleTimer();
     void clockLengthCounters();
+    void clockSweeps();
     void clockEnvelopes();
     void clockTriangleLinear();
+    void clockDMC();
     
     // Pulse duty cycle sequences
     static const u8 duty_table[4][8];
@@ -72,6 +74,12 @@ private:
         bool envelope_start;
         bool constant_volume;
         bool length_halt;
+        bool sweep_enabled;
+        bool sweep_negate;
+        bool sweep_reload;
+        u8 sweep_shift;
+        u8 sweep_period;
+        u8 sweep_counter;
         u16 timer;
         u16 timer_period;
         u8 length_counter;
@@ -111,11 +119,19 @@ private:
     // DMC channel
     struct DMC {
         bool irq_enable;
+        bool irq_flag;
         bool loop;
-        u16 rate;
+        u8 rate;
         u8 output;
         u16 sample_addr;
         u16 sample_length;
+        u16 current_addr;
+        u16 bytes_remaining;
+        u16 timer;
+        u8 shift_register;
+        u8 bits_remaining;
+        u8 sample_buffer;
+        bool sample_buffer_empty;
         bool enabled;
     } dmc;
 
@@ -126,9 +142,10 @@ private:
     u32 frame_counter;
 
     u64 cycles;
-    
+
     // Sample generation
-    Sound* sound = nullptr;
+    Sound sound;
+    Bus& bus;
     float sample_accumulator = 0.0f;
     int samples_this_frame = 0;
     static constexpr float CPU_CLOCK_RATE = 1789773.0f;

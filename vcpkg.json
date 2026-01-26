@@ -1,0 +1,15 @@
+{
+  "name": "vnes",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "crow",
+    {
+      "name": "sfml",
+      "features": ["graphics", "window", "audio"]
+    },
+    "curl",
+    "sqlite3",
+    "tinyxml2",
+    "imgui-sfml"
+  ]
+}

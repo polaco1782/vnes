@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LocalDebuggerCommandArguments>"C:\Best NES Games\Mario\Super Mario Bros. 3 (USA) (Rev 1).nes"</LocalDebuggerCommandArguments>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerCommandArgumentsHistory>"C:\Best NES Games\Mario\Super Mario Bros. 2 (USA) (Rev 1).nes" "aaaaaaaaaaa"|"C:\Best NES Games\Mario\Super Mario Bros. (World).nes"|"C:\Best NES Games\Mario\Super Mario Bros. 2 (USA) (Rev 1).nes"|"C:\Best NES Games\Zelda\Legend of Zelda, The (USA).nes"|"C:\Best NES Games\Mario\Super Mario Bros. 3 (USA) (Rev 1).nes"|</LocalDebuggerCommandArgumentsHistory>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Static|x64'">
+    <LocalDebuggerCommandArguments>"C:\Best NES Games\Mario\Super Mario Bros. 2 (USA) (Rev 1).nes"</LocalDebuggerCommandArguments>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerCommandArgumentsHistory>"C:\Best NES Games\Mario\Super Mario Bros. 2 (USA) (Rev 1).nes";"aaaaaaaaaaaaa"|"C:\Best NES Games\Mario\Super Mario Bros. 2 (USA) (Rev 1).nes" "aaaaaaaaaaa"|"C:\Best NES Games\Mario\Super Mario Bros. (World).nes"|"C:\Best NES Games\Mario\Super Mario Bros. 3 (USA) (Rev 1).nes"|"C:\Best NES Games\Mario\Super Mario Bros. 2 (USA) (Rev 1).nes"|</LocalDebuggerCommandArgumentsHistory>
+  </PropertyGroup>
+</Project>

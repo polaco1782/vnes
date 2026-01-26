@@ -1,9 +1,11 @@
 # Compiled binaries
 bin/
-vnes
+vnes/
+X64/
 
 # Build artifacts
 build/
+vcpkg_installed/
 *.o
 *.obj
 *.a
@@ -19,7 +21,9 @@ roms/
 *.dbg
 
 # IDE and editor files
+.github/
 .vscode/
+.vs/
 .idea/
 *.swp
 *.swo
@@ -38,3 +42,4 @@ roms/
 # Core dumps
 core
 core.*
+/nes_db.sqlite3

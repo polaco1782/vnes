@@ -1,21 +1,13 @@
 #include "ppu.h"
 #include "bus.h"
 #include "cartridge.h"
+#include "disasm.h"
 
-// NES color palette (2C02 NTSC palette)
-static const u32 palette_colors[64] = {
-    0x666666, 0x002A88, 0x1412A7, 0x3B00A4, 0x5C007E, 0x6E0040, 0x6C0600, 0x561D00,
-    0x333500, 0x0B4800, 0x005200, 0x004F08, 0x00404D, 0x000000, 0x000000, 0x000000,
-    0xADADAD, 0x155FD9, 0x4240FF, 0x7527FE, 0xA01ACC, 0xB71E7B, 0xB53120, 0x994E00,
-    0x6B6D00, 0x388700, 0x0C9300, 0x008F32, 0x007C8D, 0x000000, 0x000000, 0x000000,
-    0xFFFEFF, 0x64B0FF, 0x9290FF, 0xC676FF, 0xF36AFF, 0xFE6ECC, 0xFE8170, 0xEA9E22,
-    0xBCBE00, 0x88D800, 0x5CE430, 0x45E082, 0x48CDDE, 0x4F4F4F, 0x000000, 0x000000,
-    0xFFFEFF, 0xC0DFFF, 0xD3D2FF, 0xE8C8FF, 0xFBC2FF, 0xFEC4EA, 0xFECCC5, 0xF7D8A5,
-    0xE4E594, 0xCFEF96, 0xBDF4AB, 0xB3F3CC, 0xB5EBF2, 0xB8B8B8, 0x000000, 0x000000
-};
+using namespace vnes::disasm;
 
-PPU::PPU()
-    : ctrl(0), mask(0), status(0), oam_addr(0)
+PPU::PPU(Bus& b, Cartridge& c)
+    : bus(b), cart(c)
+    , ctrl(0), mask(0), status(0), oam_addr(0)
     , v(0), t(0), fine_x(0), w(false)
     , data_buffer(0)
     , scanline(0), cycle(0), odd_frame(false)
@@ -25,7 +17,6 @@ PPU::PPU()
     , at_shifter_lo(0), at_shifter_hi(0)
     , at_latch_lo(0), at_latch_hi(0)
     , sprite_count(0), sprite_zero_on_line(false)
-    , bus(nullptr), cartridge(nullptr)
 {
     for (int i = 0; i < NES_WIDTH * NES_HEIGHT; i++)
         framebuffer[i] = 0;
@@ -36,13 +27,7 @@ PPU::PPU()
     for (int i = 0; i < 256; i++)
         oam[i] = 0;
     for (int i = 0; i < 8; i++)
-        secondary_oam[i] = {0, 0, 0, 0, 0, 0, false};
-}
-
-void PPU::connect(Bus* b, Cartridge* cart)
-{
-    bus = b;
-    cartridge = cart;
+        secondary_oam[i] = { 0, 0, 0, 0, 0, 0, false };
 }
 
 void PPU::reset()
@@ -69,23 +54,25 @@ u8 PPU::ppuRead(u16 addr)
 
     if (addr < 0x2000) {
         // Pattern tables (CHR ROM/RAM)
-        return cartridge->readChr(addr);
+        return cart.readChr(addr);
     }
     else if (addr < 0x3F00) {
         // Nametables
         addr &= 0x0FFF;
         // Handle mirroring
-        Mirroring mirror = cartridge->getMirroring();
+        Mirroring mirror = cart.getMirroring();
         if (mirror == Mirroring::VERTICAL) {
             addr &= 0x07FF;
-        } else if (mirror == Mirroring::HORIZONTAL) {
-            if (addr < 0x0800)
-                addr &= 0x03FF;
-            else
-                addr = 0x0400 + (addr & 0x03FF);
-        } else if (mirror == Mirroring::SINGLE_LOWER) {
+        }
+        else if (mirror == Mirroring::HORIZONTAL) {
+            // Horizontal: Top two nametables (0,1) share memory, bottom two (2,3) share memory
+            // Map bit 11 to bit 10, keep bits 0-9
+            addr = ((addr & 0x0800) >> 1) | (addr & 0x03FF);
+        }
+        else if (mirror == Mirroring::SINGLE_LOWER) {
             addr &= 0x03FF;  // All map to first nametable
-        } else if (mirror == Mirroring::SINGLE_UPPER) {
+        }
+        else if (mirror == Mirroring::SINGLE_UPPER) {
             addr = 0x0400 + (addr & 0x03FF);  // All map to second nametable
         }
         return nametable[addr & 0x07FF];
@@ -105,22 +92,24 @@ void PPU::ppuWrite(u16 addr, u8 data)
 
     if (addr < 0x2000) {
         // Pattern tables (CHR RAM only)
-        cartridge->writeChr(addr, data);
+        cart.writeChr(addr, data);
     }
     else if (addr < 0x3F00) {
         // Nametables
         addr &= 0x0FFF;
-        Mirroring mirror = cartridge->getMirroring();
+        Mirroring mirror = cart.getMirroring();
         if (mirror == Mirroring::VERTICAL) {
             addr &= 0x07FF;
-        } else if (mirror == Mirroring::HORIZONTAL) {
-            if (addr < 0x0800)
-                addr &= 0x03FF;
-            else
-                addr = 0x0400 + (addr & 0x03FF);
-        } else if (mirror == Mirroring::SINGLE_LOWER) {
+        }
+        else if (mirror == Mirroring::HORIZONTAL) {
+            // Horizontal: Top two nametables (0,1) share memory, bottom two (2,3) share memory
+            // Map bit 11 to bit 10, keep bits 0-9
+            addr = ((addr & 0x0800) >> 1) | (addr & 0x03FF);
+        }
+        else if (mirror == Mirroring::SINGLE_LOWER) {
             addr &= 0x03FF;  // All map to first nametable
-        } else if (mirror == Mirroring::SINGLE_UPPER) {
+        }
+        else if (mirror == Mirroring::SINGLE_UPPER) {
             addr = 0x0400 + (addr & 0x03FF);  // All map to second nametable
         }
         nametable[addr & 0x07FF] = data;
@@ -139,24 +128,24 @@ u8 PPU::readRegister(u16 addr)
     u8 data = 0;
 
     switch (addr & 0x07) {
-        case 2: // PPUSTATUS
-            data = (status & 0xE0) | (data_buffer & 0x1F);
-            status &= ~0x80;  // Clear vblank flag
-            w = false;        // Reset write toggle
-            break;
+    case 2: // PPUSTATUS
+        data = (status & 0xE0) | (data_buffer & 0x1F);
+        status &= ~0x80;  // Clear vblank flag
+        w = false;        // Reset write toggle
+        break;
 
-        case 4: // OAMDATA
-            data = oam[oam_addr];
-            break;
+    case 4: // OAMDATA
+        data = oam[oam_addr];
+        break;
 
-        case 7: // PPUDATA
+    case 7: // PPUDATA
+        data = data_buffer;
+        data_buffer = ppuRead(v);
+        // Palette data is not buffered
+        if (v >= 0x3F00)
             data = data_buffer;
-            data_buffer = ppuRead(v);
-            // Palette data is not buffered
-            if (v >= 0x3F00)
-                data = data_buffer;
-            v += (ctrl & 0x04) ? 32 : 1;
-            break;
+        v += (ctrl & 0x04) ? 32 : 1;
+        break;
     }
 
     return data;
@@ -165,47 +154,49 @@ u8 PPU::readRegister(u16 addr)
 void PPU::writeRegister(u16 addr, u8 data)
 {
     switch (addr & 0x07) {
-        case 0: // PPUCTRL
-            ctrl = data;
-            t = (t & 0xF3FF) | ((data & 0x03) << 10);
-            break;
+    case 0: // PPUCTRL
+        ctrl = data;
+        t = (t & 0xF3FF) | ((data & 0x03) << 10);
+        break;
 
-        case 1: // PPUMASK
-            mask = data;
-            break;
+    case 1: // PPUMASK
+        mask = data;
+        break;
 
-        case 3: // OAMADDR
-            oam_addr = data;
-            break;
+    case 3: // OAMADDR
+        oam_addr = data;
+        break;
 
-        case 4: // OAMDATA
-            oam[oam_addr++] = data;
-            break;
+    case 4: // OAMDATA
+        oam[oam_addr++] = data;
+        break;
 
-        case 5: // PPUSCROLL
-            if (!w) {
-                fine_x = data & 0x07;
-                t = (t & 0xFFE0) | (data >> 3);
-            } else {
-                t = (t & 0x8C1F) | ((data & 0x07) << 12) | ((data & 0xF8) << 2);
-            }
-            w = !w;
-            break;
+    case 5: // PPUSCROLL
+        if (!w) {
+            fine_x = data & 0x07;
+            t = (t & 0xFFE0) | (data >> 3);
+        }
+        else {
+            t = (t & 0x8C1F) | ((data & 0x07) << 12) | ((data & 0xF8) << 2);
+        }
+        w = !w;
+        break;
 
-        case 6: // PPUADDR
-            if (!w) {
-                t = (t & 0x00FF) | ((data & 0x3F) << 8);
-            } else {
-                t = (t & 0xFF00) | data;
-                v = t;
-            }
-            w = !w;
-            break;
+    case 6: // PPUADDR
+        if (!w) {
+            t = (t & 0x00FF) | ((data & 0x3F) << 8);
+        }
+        else {
+            t = (t & 0xFF00) | data;
+            v = t;
+        }
+        w = !w;
+        break;
 
-        case 7: // PPUDATA
-            ppuWrite(v, data);
-            v += (ctrl & 0x04) ? 32 : 1;
-            break;
+    case 7: // PPUDATA
+        ppuWrite(v, data);
+        v += (ctrl & 0x04) ? 32 : 1;
+        break;
     }
 }
 
@@ -214,22 +205,21 @@ void PPU::writeDMA(u8 data)
     // OAM DMA - transfer 256 bytes from CPU memory
     u16 addr = data << 8;
     for (int i = 0; i < 256; i++) {
-        oam[oam_addr++] = bus->cpuRead(addr + i);
+        oam[oam_addr++] = bus.read(addr + i);
     }
 }
 
 u32 PPU::getColorFromPalette(u8 pal, u8 pixel)
 {
     u8 index = ppuRead(0x3F00 + (pal << 2) + pixel) & 0x3F;
-    return palette_colors[index] | 0xFF000000;  // Add alpha
+    return nesPalette[index] | 0xFF000000;  // Add alpha
 }
 
-void PPU::renderPixel()
+void PPU::fillScanlineBuffer()
 {
     int x = cycle - 1;
-    int y = scanline;
 
-    if (x < 0 || x >= NES_WIDTH || y < 0 || y >= NES_HEIGHT)
+    if (x < 0 || x >= 256)
         return;
 
     u8 bg_pixel = 0;
@@ -248,35 +238,38 @@ void PPU::renderPixel()
             bg_palette = a0 | a1;
         }
     }
-    
+
+    // Store background data
+    scanline_buffer.bg_pixels[x] = bg_pixel;
+    scanline_buffer.bg_palettes[x] = bg_palette;
+
     // Sprite rendering
     u8 sprite_pixel = 0;
     u8 sprite_palette = 0;
     bool sprite_priority = false;
-    bool sprite_zero_rendering = false;
-    
+
     if (mask & 0x10) {  // Show sprites
         for (int i = 0; i < sprite_count; i++) {
             if (!secondary_oam[i].active)
                 continue;
-                
+
             int sprite_x = secondary_oam[i].x;
-            
+
             // Check if sprite is at current x position
             if (x >= sprite_x && x < sprite_x + 8) {
                 // Check left clip
                 if ((mask & 0x04) || x >= 8) {  // Show left 8 pixels for sprites
                     int sprite_x_offset = x - sprite_x;
-                    
+
                     // Handle horizontal flip
                     if (secondary_oam[i].attr & 0x40) {
                         sprite_x_offset = 7 - sprite_x_offset;
                     }
-                    
+
                     // Get pixel value from pattern data
                     u8 pixel = ((secondary_oam[i].pattern_lo >> (7 - sprite_x_offset)) & 1) |
-                              (((secondary_oam[i].pattern_hi >> (7 - sprite_x_offset)) & 1) << 1);
-                    
+                        (((secondary_oam[i].pattern_hi >> (7 - sprite_x_offset)) & 1) << 1);
+
                     // Only use sprite if pixel is non-transparent
                     if (pixel != 0) {
                         // First non-transparent sprite pixel wins
@@ -284,80 +277,95 @@ void PPU::renderPixel()
                             sprite_pixel = pixel;
                             sprite_palette = (secondary_oam[i].attr & 0x03) + 4;  // Sprite palettes are 4-7
                             sprite_priority = (secondary_oam[i].attr & 0x20) != 0;  // Priority bit
-                            
+
                             // Check if this is sprite 0
-                            if (i == 0 && sprite_zero_on_line) {
-                                sprite_zero_rendering = true;
-                            }
+                            if (i == 0 && sprite_zero_on_line && bg_pixel != 0 && sprite_pixel != 0 && x != 255 && !(status & 0x40))
+                                    status |= 0x40;  // Set sprite 0 hit flag
                         }
                     }
                 }
             }
         }
     }
-    
-    // Sprite 0 hit detection
-    // Can only trigger once per frame and not at x=255
-    if (sprite_zero_rendering && bg_pixel != 0 && sprite_pixel != 0 && 
-        x != 255 && !(status & 0x40)) {
-        status |= 0x40;  // Set sprite 0 hit flag
-    }
 
-    // Priority multiplexer
-    u8 final_pixel;
-    u8 final_palette;
-    
-    if (bg_pixel == 0 && sprite_pixel == 0) {
-        // Both transparent - use backdrop color
-        final_pixel = 0;
-        final_palette = 0;
-    }
-    else if (bg_pixel == 0 && sprite_pixel > 0) {
-        // Background transparent, sprite visible
-        final_pixel = sprite_pixel;
-        final_palette = sprite_palette;
-    }
-    else if (bg_pixel > 0 && sprite_pixel == 0) {
-        // Sprite transparent, background visible
-        final_pixel = bg_pixel;
-        final_palette = bg_palette;
-    }
-    else {
-        // Both visible - check priority
-        if (sprite_priority) {
-            // Sprite behind background
-            final_pixel = bg_pixel;
-            final_palette = bg_palette;
-        } else {
-            // Sprite in front of background
+    // Store sprite data
+    scanline_buffer.sprite_pixels[x] = sprite_pixel;
+    scanline_buffer.sprite_palettes[x] = sprite_palette;
+    scanline_buffer.sprite_priority[x] = sprite_priority;
+}
+
+void PPU::renderScanlineBurst()
+{
+    if (scanline < 0 || scanline >= NES_HEIGHT)
+        return;
+
+    int y = scanline;
+    u32* line = &framebuffer[y * NES_WIDTH];
+
+    // Render all 256 pixels in one burst
+    for (int x = 0; x < 256; x++) {
+        u8 bg_pixel = scanline_buffer.bg_pixels[x];
+        u8 bg_palette = scanline_buffer.bg_palettes[x];
+        u8 sprite_pixel = scanline_buffer.sprite_pixels[x];
+        u8 sprite_palette = scanline_buffer.sprite_palettes[x];
+        bool sprite_priority = scanline_buffer.sprite_priority[x];
+
+        // Priority multiplexer
+        u8 final_pixel;
+        u8 final_palette;
+
+        if (bg_pixel == 0 && sprite_pixel == 0) {
+            // Both transparent - use backdrop color
+            final_pixel = 0;
+            final_palette = 0;
+        }
+        else if (bg_pixel == 0 && sprite_pixel > 0) {
+            // Background transparent, sprite visible
             final_pixel = sprite_pixel;
             final_palette = sprite_palette;
         }
-    }
+        else if (bg_pixel > 0 && sprite_pixel == 0) {
+            // Sprite transparent, background visible
+            final_pixel = bg_pixel;
+            final_palette = bg_palette;
+        }
+        else {
+            // Both visible - check priority
+            if (sprite_priority) {
+                // Sprite behind background
+                final_pixel = bg_pixel;
+                final_palette = bg_palette;
+            }
+            else {
+                // Sprite in front of background
+                final_pixel = sprite_pixel;
+                final_palette = sprite_palette;
+            }
+        }
 
-    // Final color
-    u32 color = getColorFromPalette(final_palette, final_pixel);
-    framebuffer[y * NES_WIDTH + x] = color;
+        // Write final color directly to framebuffer
+        line[x] = getColorFromPalette(final_palette, final_pixel);
+    }
 }
 
 void PPU::step()
 {
     // Visible scanlines (0-239) and pre-render scanline (261)
     if (scanline < 240 || scanline == 261) {
-        
+
         // Sprite evaluation at cycle 257-320
         if (cycle == 257 && scanline < 240) {
             sprite_count = 0;
             sprite_zero_on_line = false;
-            
+
             // Sprite height: 8 or 16 based on PPUCTRL bit 5
             int sprite_height = (ctrl & 0x20) ? 16 : 8;
-            
+
             // Evaluate all 64 sprites
             for (int i = 0; i < 64; i++) {
                 int sprite_y = oam[i * 4];
                 int diff = scanline - sprite_y;
-                
+
                 // Check if sprite is on this scanline
                 if (diff >= 0 && diff < sprite_height) {
                     if (sprite_count < 8) {
@@ -367,13 +375,14 @@ void PPU::step()
                         secondary_oam[sprite_count].attr = oam[i * 4 + 2];
                         secondary_oam[sprite_count].x = oam[i * 4 + 3];
                         secondary_oam[sprite_count].active = false;  // Will be set during fetch
-                        
+
                         if (i == 0) {
                             sprite_zero_on_line = true;
                         }
-                        
+
                         sprite_count++;
-                    } else {
+                    }
+                    else {
                         // Sprite overflow
                         status |= 0x20;
                         break;
@@ -381,13 +390,13 @@ void PPU::step()
                 }
             }
         }
-        
-        // Sprite pattern fetches at cycle 321-340
-        if (cycle >= 321 && cycle <= 340 && scanline < 240) {
-            int fetch_cycle = (cycle - 321) / 8;
+
+        // Sprite pattern fetches at cycles 257-320 (64 cycles for 8 sprites)
+        if (cycle >= 257 && cycle <= 320 && scanline < 240) {
+            int fetch_cycle = (cycle - 257) / 8;
             if (fetch_cycle < sprite_count) {
-                int phase = (cycle - 321) % 8;
-                
+                int phase = (cycle - 257) % 8;
+
                 if (phase == 0) {
                     // Start fetching this sprite
                     secondary_oam[fetch_cycle].active = true;
@@ -396,20 +405,21 @@ void PPU::step()
                     // Fetch pattern low byte
                     int sprite_height = (ctrl & 0x20) ? 16 : 8;
                     int sprite_y_offset = scanline - secondary_oam[fetch_cycle].y;
-                    
+
                     // Handle vertical flip
                     if (secondary_oam[fetch_cycle].attr & 0x80) {
                         sprite_y_offset = sprite_height - 1 - sprite_y_offset;
                     }
-                    
+
                     // Get pattern table address
                     u16 pattern_addr;
                     u8 tile = secondary_oam[fetch_cycle].tile;
-                    
+
                     if (sprite_height == 8) {
                         // 8x8 sprites: use PPUCTRL bit 3 for pattern table
                         pattern_addr = ((ctrl & 0x08) << 9) | (tile << 4) | sprite_y_offset;
-                    } else {
+                    }
+                    else {
                         // 8x16 sprites: tile bit 0 selects pattern table, use top/bottom tile
                         int table = tile & 0x01;
                         tile &= 0xFE;
@@ -425,20 +435,21 @@ void PPU::step()
                     // Fetch pattern high byte
                     int sprite_height = (ctrl & 0x20) ? 16 : 8;
                     int sprite_y_offset = scanline - secondary_oam[fetch_cycle].y;
-                    
+
                     // Handle vertical flip
                     if (secondary_oam[fetch_cycle].attr & 0x80) {
                         sprite_y_offset = sprite_height - 1 - sprite_y_offset;
                     }
-                    
+
                     // Get pattern table address
                     u16 pattern_addr;
                     u8 tile = secondary_oam[fetch_cycle].tile;
-                    
+
                     if (sprite_height == 8) {
                         // 8x8 sprites: use PPUCTRL bit 3 for pattern table
                         pattern_addr = ((ctrl & 0x08) << 9) | (tile << 4) | sprite_y_offset | 8;
-                    } else {
+                    }
+                    else {
                         // 8x16 sprites: tile bit 0 selects pattern table, use top/bottom tile
                         int table = tile & 0x01;
                         tile &= 0xFE;
@@ -452,7 +463,7 @@ void PPU::step()
                 }
             }
         }
-        
+
         // Background fetches
         if ((cycle >= 1 && cycle <= 256) || (cycle >= 321 && cycle <= 336)) {
             // Shift registers
@@ -461,41 +472,42 @@ void PPU::step()
             at_shifter_lo <<= 1;
             at_shifter_hi <<= 1;
 
-            // Load attribute shifters
-            if (at_latch_lo) at_shifter_lo |= 1;
-            if (at_latch_hi) at_shifter_hi |= 1;
+            // At cycle 1, load pattern and attribute data into shifters
+            if ((cycle & 0x07) == 1) {
+                // Load shifters with pattern data (8 bits at once)
+                bg_shifter_lo = (bg_shifter_lo & 0xFF00) | bg_lo;
+                bg_shifter_hi = (bg_shifter_hi & 0xFF00) | bg_hi;
+                at_shifter_lo = (at_shifter_lo & 0xFF00) | ((at_byte & 1) ? 0xFF : 0x00);
+                at_shifter_hi = (at_shifter_hi & 0xFF00) | ((at_byte & 2) ? 0xFF : 0x00);
+            }
 
             switch (cycle & 0x07) {
-                case 1:  // Nametable byte
-                    // Load shifters
-                    bg_shifter_lo = (bg_shifter_lo & 0xFF00) | bg_lo;
-                    bg_shifter_hi = (bg_shifter_hi & 0xFF00) | bg_hi;
-                    at_latch_lo = (at_byte & 1) ? 0xFF : 0;
-                    at_latch_hi = (at_byte & 2) ? 0xFF : 0;
-                    nt_byte = ppuRead(0x2000 | (v & 0x0FFF));
-                    break;
-                case 3:  // Attribute byte
-                    at_byte = ppuRead(0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07));
-                    if (v & 0x40) at_byte >>= 4;
-                    if (v & 0x02) at_byte >>= 2;
-                    at_byte &= 0x03;
-                    break;
-                case 5:  // Pattern low
-                    bg_lo = ppuRead(((ctrl & 0x10) << 8) + (nt_byte << 4) + ((v >> 12) & 0x07));
-                    break;
-                case 7:  // Pattern high
-                    bg_hi = ppuRead(((ctrl & 0x10) << 8) + (nt_byte << 4) + ((v >> 12) & 0x07) + 8);
-                    break;
-                case 0:  // Increment horizontal
-                    if (mask & 0x18) {  // Rendering enabled
-                        if ((v & 0x001F) == 31) {
-                            v &= ~0x001F;
-                            v ^= 0x0400;
-                        } else {
-                            v++;
-                        }
+            case 1:  // Nametable byte
+                nt_byte = ppuRead(0x2000 | (v & 0x0FFF));
+                break;
+            case 3:  // Attribute byte
+                at_byte = ppuRead(0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07));
+                if (v & 0x40) at_byte >>= 4;
+                if (v & 0x02) at_byte >>= 2;
+                at_byte &= 0x03;
+                break;
+            case 5:  // Pattern low
+                bg_lo = ppuRead(((ctrl & 0x10) << 8) + (nt_byte << 4) + ((v >> 12) & 0x07));
+                break;
+            case 7:  // Pattern high
+                bg_hi = ppuRead(((ctrl & 0x10) << 8) + (nt_byte << 4) + ((v >> 12) & 0x07) + 8);
+                break;
+            case 0:  // Increment horizontal
+                if (mask & 0x18) {  // Rendering enabled
+                    if ((v & 0x001F) == 31) {
+                        v &= ~0x001F;
+                        v ^= 0x0400;
                     }
-                    break;
+                    else {
+                        v++;
+                    }
+                }
+                break;
             }
         }
 
@@ -503,15 +515,18 @@ void PPU::step()
         if (cycle == 256 && (mask & 0x18)) {
             if ((v & 0x7000) != 0x7000) {
                 v += 0x1000;
-            } else {
+            }
+            else {
                 v &= ~0x7000;
                 int y = (v & 0x03E0) >> 5;
                 if (y == 29) {
                     y = 0;
                     v ^= 0x0800;
-                } else if (y == 31) {
+                }
+                else if (y == 31) {
                     y = 0;
-                } else {
+                }
+                else {
                     y++;
                 }
                 v = (v & ~0x03E0) | (y << 5);
@@ -528,9 +543,22 @@ void PPU::step()
             v = (v & ~0x7BE0) | (t & 0x7BE0);
         }
 
-        // Render pixel
+        // MMC3 IRQ counter: Clock at cycle 260 on visible and pre-render scanlines
+        // This is when the PPU starts fetching tiles for the next scanline
+        if (cycle == 260 && (scanline < 240 || scanline == 261)) {
+            if (mask & 0x18) {  // Only clock when rendering is enabled
+                cart.scanline();
+            }
+        }
+
+        // Fill scanline buffer during rendering
         if (scanline < 240 && cycle >= 1 && cycle <= 256) {
-            renderPixel();
+            fillScanlineBuffer();
+        }
+
+        // Render entire scanline in burst at cycle 257
+        if (scanline < 240 && cycle == 257) {
+            renderScanlineBurst();
         }
     }
 
@@ -550,7 +578,7 @@ void PPU::step()
 
     // Advance cycle/scanline
     cycle++;
-    
+
     // Odd frame cycle skip: on odd frames with rendering enabled,
     // skip cycle 0 of scanline 0 (effectively skip last cycle of pre-render)
     if (scanline == 261 && cycle == 340 && odd_frame && (mask & 0x18)) {

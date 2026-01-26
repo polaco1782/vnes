@@ -4,27 +4,22 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <memory>
+#include <array>
+#include "mapper.h"
+#include "types.h"
 
 // iNES Header (16 bytes)
 struct INESHeader {
-    uint8_t magic[4];      // "NES" + 0x1A
-    uint8_t prg_rom_size;  // PRG ROM size in 16KB units
-    uint8_t chr_rom_size;  // CHR ROM size in 8KB units
-    uint8_t flags6;        // Mapper, mirroring, battery, trainer
-    uint8_t flags7;        // Mapper, VS/Playchoice, NES 2.0
-    uint8_t flags8;        // PRG-RAM size (rarely used)
-    uint8_t flags9;        // TV system (rarely used)
-    uint8_t flags10;       // TV system, PRG-RAM (unofficial)
-    uint8_t padding[5];    // Unused padding
-};
-
-// Mirroring modes
-enum class Mirroring {
-    HORIZONTAL,
-    VERTICAL,
-    FOUR_SCREEN,
-    SINGLE_LOWER,
-    SINGLE_UPPER
+    u8 magic[4];      // "NES" + 0x1A
+    u8 prg_rom_size;  // PRG ROM size in 16KB units
+    u8 chr_rom_size;  // CHR ROM size in 8KB units
+    u8 flags6;        // Mapper, mirroring, battery, trainer
+    u8 flags7;        // Mapper, VS/Playchoice, NES 2.0
+    u8 flags8;        // PRG-RAM size (rarely used)
+    u8 flags9;        // TV system (rarely used)
+    u8 flags10;       // TV system, PRG-RAM (unofficial)
+    u8 padding[5];    // Unused padding
 };
 
 class Cartridge {
@@ -37,49 +32,70 @@ public:
 
     // Getters
     bool isLoaded() const { return loaded; }
-    uint8_t getMapper() const { return mapper; }
-    Mirroring getMirroring() const { return mirroring; }
+    u8 getMapperNumber() const { return mapperNumber; }
+    Mirroring getMirroring() const;
     bool hasBattery() const { return battery; }
+    const char* getMapperName() const;
+    Mapper* getMapper() const { return mapper.get(); }
 
-    // ROM data access
-    const std::vector<uint8_t>& getPrgRom() const { return prg_rom; }
-    const std::vector<uint8_t>& getChrRom() const { return chr_rom; }
+    // ROM data access (for debugging/inspection)
+    const std::vector<u8>& getPrgRom() const { return prg_rom; }
+    const std::vector<u8>& getChrRom() const { return chr_rom; }
 
     // CPU interface for PRG space ($6000-$FFFF)
-    uint8_t readPrg(uint16_t addr) const;
-    void writePrg(uint16_t addr, uint8_t data);
+    u8 readPrg(u16 addr) const;
+    void writePrg(u16 addr, u8 data);
     
     // PPU interface for CHR space ($0000-$1FFF)
-    uint8_t readChr(uint16_t addr) const;
-    void writeChr(uint16_t addr, uint8_t data);
+    u8 readChr(u16 addr) const;
+    void writeChr(u16 addr, u8 data);
+
+	// Mapper-specific timing (for mappers that need it, eg: MMC3)
+    void scanline();
+    void clearIRQ();
+    bool hasIRQ();
+
+    bool addGGCode(const std::string& code);
+    void removeGGCode(const std::string& code);
+
+    void signalFrameComplete();
+    void flushSRAM();
 
 private:
     bool parseHeader(const INESHeader& header);
     
-    // MMC1 (Mapper 1) specific
-    void mmc1Write(uint16_t addr, uint8_t data);
-    void mmc1UpdateBanks();
-
     bool loaded;
-    uint8_t mapper;
-    Mirroring mirroring;
+    u8 mapperNumber;
     bool battery;
 
-    std::vector<uint8_t> prg_rom;  // Program ROM
-    std::vector<uint8_t> chr_rom;  // Character ROM (can be RAM if size=0)
-    std::vector<uint8_t> prg_ram;  // PRG RAM at $6000-$7FFF (8KB)
+    std::vector<u8> prg_rom;  // Program ROM
+    std::vector<u8> chr_rom;  // Character ROM (can be RAM if size=0)
+    std::vector<u8> prg_ram;  // PRG RAM at $6000-$7FFF (8KB)
+
+    // Active Game Genie entries. We keep a small dense array of at most
+    // MAX_GG_CODES entries and a `gg_count` to avoid scanning when empty.
+    static const size_t MAX_GG_CODES = 16;
+    uint8_t gg_count;
+    struct GGActiveEntry {
+        std::string code; // human-readable code string (optional)
+        u16 addr = 0;
+        u8 value = 0;
+        u8 compare = 0;
+        bool has_compare = false;
+        u32 hits = 0;
+    };
+    std::array<GGActiveEntry, MAX_GG_CODES> gg_active_entries;
     
-    // MMC1 registers
-    uint8_t mmc1_shift;        // 5-bit shift register
-    uint8_t mmc1_shift_count;  // Number of bits written
-    uint8_t mmc1_ctrl;         // Control register
-    uint8_t mmc1_chr_bank0;    // CHR bank 0
-    uint8_t mmc1_chr_bank1;    // CHR bank 1
-    uint8_t mmc1_prg_bank;     // PRG bank
+    // The pluggable mapper
+    std::unique_ptr<Mapper> mapper;
     
-    // Computed bank offsets
-    uint32_t prg_bank_offset[2];  // Two 16KB PRG banks
-    uint32_t chr_bank_offset[2];  // Two 4KB CHR banks
+    // Initial mirroring from ROM header (before mapper can change it)
+    Mirroring initialMirroring;
+
+    // SRAM persistence (for battery-backed carts)
+    bool prgRamDirty;
+    u32 framesSinceLastSave;
+    std::string savePath;
 };
 
 #endif // CARTRIDGE_H

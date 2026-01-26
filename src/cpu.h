@@ -2,77 +2,81 @@
 #define CPU_H
 
 #include "types.h"
-#include <string>
+#include <concepts>
+#include <cstdint>
 
-// Forward declaration
+// Forward declaration to avoid circular dependency with Bus
 class Bus;
 
-// 6502 Status flags
-enum Flag {
-    FLAG_C = 0x01,  // Carry
-    FLAG_Z = 0x02,  // Zero
-    FLAG_I = 0x04,  // Interrupt Disable
-    FLAG_D = 0x08,  // Decimal (unused on NES)
-    FLAG_B = 0x10,  // Break
-    FLAG_U = 0x20,  // Unused (always 1)
-    FLAG_V = 0x40,  // Overflow
-    FLAG_N = 0x80   // Negative
+// Strongly-typed flag enum � no accidental int conversions
+enum class Flag : u8 {
+    C = 0x01,   // Carry
+    Z = 0x02,   // Zero
+    I = 0x04,   // Interrupt Disable
+    D = 0x08,   // Decimal (unused on NES)
+    B = 0x10,   // Break
+    U = 0x20,   // Unused (always 1)
+    V = 0x40,   // Overflow
+    N = 0x80    // Negative
 };
+
+// Constrains push/pull to the two widths the 6502 stack actually uses
+template<typename T>
+concept BusWidth = std::same_as<T, u8> || std::same_as<T, u16>;
 
 class CPU {
 public:
-    CPU();
-
-    void connect(Bus* bus);
+    explicit CPU(Bus& bus);
     void reset();
     void irq();
     void nmi();
     void step();
 
-    // For debugging
-    u16 getPC() const { return pc; }
-    u8 getSP() const { return sp; }
-    u8 getA() const { return a; }
-    u8 getX() const { return x; }
-    u8 getY() const { return y; }
-    u8 getStatus() const { return status; }
-    u64 getCycles() const { return cycles; }
+    [[nodiscard]] u16 getPC()     const noexcept { return pc; }
+    [[nodiscard]] u8  getSP()     const noexcept { return sp; }
+    [[nodiscard]] u8  getA()      const noexcept { return a; }
+    [[nodiscard]] u8  getX()      const noexcept { return x; }
+    [[nodiscard]] u8  getY()      const noexcept { return y; }
+    [[nodiscard]] u8  getStatus() const noexcept { return status; }
+    [[nodiscard]] u64 getCycles() const noexcept { return cycles; }
 
-    // For debugger manipulation
-    void setPC(u16 val) { pc = val; }
-    void setSP(u8 val) { sp = val; }
-    void setA(u8 val) { a = val; }
-    void setX(u8 val) { x = val; }
-    void setY(u8 val) { y = val; }
-    void setStatus(u8 val) { status = val; }
+    [[nodiscard]] bool getFlag(Flag f) const noexcept;
+
+    void setPC(u16 v)    noexcept { pc = v; }
+    void setSP(u8 v)     noexcept { sp = v; }
+    void setA(u8 v)      noexcept { a = v; }
+    void setX(u8 v)      noexcept { x = v; }
+    void setY(u8 v)      noexcept { y = v; }
+    void setStatus(u8 v) noexcept { status = v; }
 
 private:
-    // Memory access
-    u8 read(u16 addr);
-    void write(u16 addr, u8 data);
+    [[nodiscard]] u8  read(u16 addr);
+    void              write(u16 addr, u8 data);
 
-    // Stack operations
-    void push(u8 data);
-    u8 pull();
-    void push16(u16 data);
-    u16 pull16();
+    // Reads two consecutive bytes as a little-endian u16 (for interrupt vectors)
+    [[nodiscard]] u16 readLE(u16 addr);
 
-    // Flag operations
-    void setFlag(Flag f, bool v);
-    bool getFlag(Flag f) const;
-    void updateZN(u8 value);
+    // Stack explicit width at call site avoids the old push/push16 split
+    template<BusWidth T> void push(T data);
+    template<BusWidth T> [[nodiscard]] T pull();
 
-    // Addressing modes - return address
-    u16 addr_imm();
-    u16 addr_zp();
-    u16 addr_zpx();
-    u16 addr_zpy();
-    u16 addr_abs();
-    u16 addr_abx();
-    u16 addr_aby();
-    u16 addr_ind();
-    u16 addr_izx();
-    u16 addr_izy();
+    void setFlag(Flag f, bool v) noexcept;
+    void updateZN(u8 value) noexcept;
+
+    // Addressing modes
+    [[nodiscard]] u16 addr_imm();
+    [[nodiscard]] u16 addr_zp();
+    [[nodiscard]] u16 addr_zpx();
+    [[nodiscard]] u16 addr_zpy();
+    [[nodiscard]] u16 addr_abs();
+    [[nodiscard]] u16 addr_abx();
+    [[nodiscard]] u16 addr_aby();
+    [[nodiscard]] u16 addr_ind();
+    [[nodiscard]] u16 addr_izx();
+    [[nodiscard]] u16 addr_izy();
+
+    // Bus reference
+    Bus& bus;
 
     // Instructions
     void op_adc(u16 addr);
@@ -136,22 +140,17 @@ private:
     void op_txs();
     void op_tya();
 
-    // Branch helper
     void branch(bool condition);
 
     // Registers
-    u16 pc;     // Program counter
-    u8 sp;      // Stack pointer
-    u8 a;       // Accumulator
-    u8 x;       // X register
-    u8 y;       // Y register
-    u8 status;  // Status register
+    u16 pc{};
+    u8  sp{};
+    u8  a{};
+    u8  x{};
+    u8  y{};
+    u8  status{};
 
-    // Cycle counter
-    u64 cycles;
-
-    // Bus connection
-    Bus* bus;
+    u64  cycles{};
 };
 
 #endif // CPU_H

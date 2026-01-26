@@ -1,29 +1,38 @@
 #include "bus.h"
 #include "input.h"
 #include <cstring>
-#include <sstream>
+#include <charconv>
+#include <algorithm>
+#include "util.h"
 
+using vnes::util::toHex;
+using vnes::util::hexWord;
 Bus::Bus()
-    : input(nullptr), cartridge(nullptr), system_cycles(0), log_accesses(false)
+    : cpu(*this), ppu(*this, cartridge), apu(*this)
+    , system_cycles(0), log_accesses(false)
 {
     std::memset(ram, 0, sizeof(ram));
+}
 
-    // Connect components
-    cpu.connect(this);
-    ppu.connect(this, nullptr);
+bool Bus::loadCartridge(const std::string& filepath)
+{
+    if (!cartridge.load(filepath)) return false;
+
+    return true;
+}
+
+void Bus::updateInput()
+{
+    input.updateFromKeyboard();
 }
 
 std::string Bus::getRegionName(u16 addr) const
 {
     if (addr < 0x0800) {
-        std::ostringstream ss;
-        ss << "RAM[$" << std::hex << addr << "]";
-        return ss.str();
+        return std::string("RAM[$") + toHex(addr, 4) + "]";
     }
     else if (addr < 0x2000) {
-        std::ostringstream ss;
-        ss << "RAM[$" << std::hex << (addr & 0x07FF) << "] (mirror)";
-        return ss.str();
+        return std::string("RAM[$") + toHex(addr & 0x07FF, 4) + "] (mirror)";
     }
     else if (addr < 0x4000) {
         static const char* ppu_regs[] = {
@@ -57,9 +66,7 @@ std::string Bus::getRegionName(u16 addr) const
             case 0x4016: return "JOY1";
             case 0x4017: return "JOY2/FRAME";
             default: {
-                std::ostringstream ss;
-                ss << "IO[$" << std::hex << addr << "]";
-                return ss.str();
+                return std::string("IO[$") + toHex(addr, 4) + "]";
             }
         }
     }
@@ -67,14 +74,10 @@ std::string Bus::getRegionName(u16 addr) const
         return "Expansion";
     }
     else if (addr < 0x8000) {
-        std::ostringstream ss;
-        ss << "SRAM[$" << std::hex << (addr - 0x6000) << "]";
-        return ss.str();
+        return std::string("SRAM[$") + toHex(addr - 0x6000, 4) + "]";
     }
     else {
-        std::ostringstream ss;
-        ss << "PRG[$" << std::hex << (addr - 0x8000) << "]";
-        return ss.str();
+        return std::string("PRG[$") + toHex(addr - 0x8000, 4) + "]";
     }
 }
 
@@ -88,17 +91,6 @@ void Bus::logAccess(MemAccess::Type type, u16 addr, u8 value)
     access.value = value;
     access.region = getRegionName(addr);
     access_log.push_back(access);
-}
-
-void Bus::connect(Cartridge* cart)
-{
-    cartridge = cart;
-    ppu.connect(this, cart);
-}
-
-void Bus::connectInput(Input* input_device)
-{
-    input = input_device;
 }
 
 void Bus::reset()
@@ -131,10 +123,16 @@ void Bus::clock()
         cpu.irq();
     }
 
+    // Handle IRQ from Mapper
+    if (cartridge.hasIRQ()) {
+        cartridge.clearIRQ();
+        cpu.irq();
+    }
+
     system_cycles++;
 }
 
-u8 Bus::cpuRead(u16 addr)
+u8 Bus::read(u16 addr)
 {
     u8 data = 0;
     
@@ -150,7 +148,7 @@ u8 Bus::cpuRead(u16 addr)
         // APU and I/O registers
         if (addr == 0x4016) {
             // Controller 1
-            data = input ? input->read() : 0x40;
+            data = input.read();
         }
         else if (addr == 0x4017) {
             // Controller 2 (not implemented)
@@ -162,16 +160,14 @@ u8 Bus::cpuRead(u16 addr)
     }
     else if (addr >= 0x4020) {
         // Cartridge space ($6000-$FFFF handled by cartridge)
-        if (cartridge) {
-            data = cartridge->readPrg(addr);
-        }
+        data = cartridge.readPrg(addr);
     }
 
     logAccess(MemAccess::READ, addr, data);
     return data;
 }
 
-void Bus::cpuWrite(u16 addr, u8 data)
+void Bus::write(u16 addr, u8 data)
 {
     logAccess(MemAccess::WRITE, addr, data);
     
@@ -191,8 +187,8 @@ void Bus::cpuWrite(u16 addr, u8 data)
         }
         else if (addr == 0x4016) {
             // Controller strobe
-            if (input && (data & 0x01)) {
-                input->strobe();
+            if (data & 0x01) {
+                input.strobe();
             }
         }
         else {
@@ -201,8 +197,6 @@ void Bus::cpuWrite(u16 addr, u8 data)
     }
     else if (addr >= 0x4020) {
         // Cartridge space ($6000-$FFFF: PRG RAM and mapper registers)
-        if (cartridge) {
-            cartridge->writePrg(addr, data);
-        }
+        cartridge.writePrg(addr, data);
     }
 }

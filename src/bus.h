@@ -6,11 +6,9 @@
 #include "ppu.h"
 #include "apu.h"
 #include "cartridge.h"
+#include "input.h"
 #include <vector>
 #include <string>
-
-// Forward declarations
-class Input;
 
 // Memory access record for debugging
 struct MemAccess {
@@ -24,29 +22,26 @@ struct MemAccess {
 class Bus {
 public:
     Bus();
-
-    void connect(Cartridge* cart);
+    // Load a ROM into the internal cartridge and connect components
+    bool loadCartridge(const std::string& filepath);
     void reset();
 
     // Clock the entire system
     void clock();
 
+    // Update input state (call once per frame before clocking)
+    void updateInput();
+
     // CPU memory interface
-    u8 cpuRead(u16 addr);
-    void cpuWrite(u16 addr, u8 data);
+    u8 read(u16 addr);
+    void write(u16 addr, u8 data);
 
     // Components (public for direct access)
     CPU cpu;
     PPU ppu;
     APU apu;
-
-    // Input connection
-    void connectInput(Input* input_device);
-    
-    // Frame status
-    bool isFrameComplete() const { return ppu.isFrameComplete(); }
-    void clearFrameComplete() { ppu.clearFrameComplete(); }
-    const u32* getFramebuffer() const { return ppu.getFramebuffer(); }
+    Cartridge cartridge;
+    Input input;
 
     // Debug: memory access tracking
     void enableAccessLog(bool enable) { log_accesses = enable; }
@@ -56,12 +51,6 @@ public:
 private:
     // Internal RAM (2KB, mirrored)
     u8 ram[2048];
-
-    // Input device
-    Input* input;
-
-    // Cartridge
-    Cartridge* cartridge;
 
     // System cycles
     u64 system_cycles;

@@ -13,9 +13,7 @@ static const int NES_HEIGHT = 240;
 
 class PPU {
 public:
-    PPU();
-
-    void connect(Bus* bus, Cartridge* cart);
+    explicit PPU(Bus& bus, Cartridge& cart);
     void reset();
     void step();
 
@@ -48,7 +46,7 @@ public:
     u16 getTempAddr() const { return t; }
     u8 getFineX() const { return fine_x; }
     bool getWriteToggle() const { return w; }
-    
+
     void setCtrl(u8 val) { ctrl = val; }
     void setMask(u8 val) { mask = val; }
     void setStatus(u8 val) { status = val; }
@@ -56,14 +54,31 @@ public:
     void setVramAddr(u16 val) { v = val; }
     void setTempAddr(u16 val) { t = val; }
     void setFineX(u8 val) { fine_x = val & 0x07; }
-    
+
+    // OAM access for debugging
+    u8 getOamByte(u8 index) const { return oam[index]; }
+    const u8* getOam() const { return oam; }
+
+    // Palette access for debugging
+    u8 getPaletteByte(u8 index) const { return palette[index & 0x1F]; }
+    const u8* getPalette() const { return palette; }
+
+    // Nametable access for debugging
+    u8 getNametableByte(u16 addr) const { return nametable[addr & 0x7FF]; }
+    const u8* getNametable() const { return nametable; }
+
 private:
     // Internal VRAM access
     u8 ppuRead(u16 addr);
     void ppuWrite(u16 addr, u8 data);
 
+    // Bus and Cartridge references
+    Bus& bus;
+    Cartridge& cart;
+
     // Rendering helpers
-    void renderPixel();
+    void fillScanlineBuffer();
+    void renderScanlineBurst();
     u32 getColorFromPalette(u8 palette, u8 pixel);
 
     // Registers
@@ -119,12 +134,18 @@ private:
     int sprite_count;
     bool sprite_zero_on_line;
 
+    // Scanline rendering buffer for burst rendering
+    struct ScanlineData {
+        u8 bg_pixels[256];        // Background pixel values (0-3)
+        u8 bg_palettes[256];      // Background palette indices (0-3)
+        u8 sprite_pixels[256];    // Sprite pixel values (0-3)
+        u8 sprite_palettes[256];  // Sprite palette indices (4-7)
+        bool sprite_priority[256]; // Sprite behind background flag
+    };
+    ScanlineData scanline_buffer;
+
     // Output
     u32 framebuffer[NES_WIDTH * NES_HEIGHT];
-
-    // Connections
-    Bus* bus;
-    Cartridge* cartridge;
 };
 
 #endif // PPU_H
