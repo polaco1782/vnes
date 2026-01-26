@@ -3,6 +3,7 @@
 
 #include "types.h"
 #include <SFML/Audio.hpp>
+#include <vector>
 
 class APU;
 
@@ -14,6 +15,9 @@ public:
     void connect(APU* apu_device);
     void start();
     void stop();
+    
+    // Called from emulation thread to push samples
+    void pushSample(float sample);
     
 private:
     // SoundStream interface
@@ -27,15 +31,9 @@ private:
     static const unsigned int BUFFER_SIZE = 2048;
     
     sf::Int16 samples[BUFFER_SIZE];
-    
-    // Sample accumulation for downsampling
-    float sample_accumulator;
-    int samples_accumulated;
-    
-    // APU runs at ~1.789773 MHz, we need to downsample to 44.1 kHz
-    static constexpr float APU_CLOCK_RATE = 1789773.0f;
-    static constexpr float SAMPLE_INTERVAL = APU_CLOCK_RATE / SAMPLE_RATE;
-    float clock_counter;
+    std::vector<sf::Int16> sample_buffer;
+
+    static const size_t MAX_BUFFER_SIZE = SAMPLE_RATE; // 1 second buffer
 };
 
 #endif // SOUND_H

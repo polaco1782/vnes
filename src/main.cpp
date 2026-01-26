@@ -66,6 +66,7 @@ int main(int argc, char* argv[])
     bus.connectInput(&input);
     debugger.connect(&bus);
     sound.connect(&bus.apu);
+    bus.apu.connect(&sound);
     sound.start();
     
     bool in_debugger = false;

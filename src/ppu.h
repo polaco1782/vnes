@@ -105,6 +105,20 @@ private:
     u8 at_latch_lo;
     u8 at_latch_hi;
 
+    // Sprite rendering
+    struct Sprite {
+        u8 y;
+        u8 tile;
+        u8 attr;
+        u8 x;
+        u8 pattern_lo;
+        u8 pattern_hi;
+        bool active;
+    };
+    Sprite secondary_oam[8];  // Up to 8 sprites per scanline
+    int sprite_count;
+    bool sprite_zero_on_line;
+
     // Output
     u32 framebuffer[NES_WIDTH * NES_HEIGHT];
 

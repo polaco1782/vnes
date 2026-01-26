@@ -24,6 +24,7 @@ PPU::PPU()
     , bg_shifter_lo(0), bg_shifter_hi(0)
     , at_shifter_lo(0), at_shifter_hi(0)
     , at_latch_lo(0), at_latch_hi(0)
+    , sprite_count(0), sprite_zero_on_line(false)
     , bus(nullptr), cartridge(nullptr)
 {
     for (int i = 0; i < NES_WIDTH * NES_HEIGHT; i++)
@@ -34,6 +35,8 @@ PPU::PPU()
         palette[i] = 0;
     for (int i = 0; i < 256; i++)
         oam[i] = 0;
+    for (int i = 0; i < 8; i++)
+        secondary_oam[i] = {0, 0, 0, 0, 0, 0, false};
 }
 
 void PPU::connect(Bus* b, Cartridge* cart)
@@ -236,51 +239,92 @@ void PPU::renderPixel()
         }
     }
     
-    // Sprite 0 hit detection
-    // Check if sprite 0 is on this scanline and at this x position
-    if ((mask & 0x18) == 0x18) {  // Both background and sprites enabled
-        u8 sprite_y = oam[0];
-        u8 sprite_tile = oam[1];
-        u8 sprite_attr = oam[2];
-        u8 sprite_x = oam[3];
-        
-        // Check if sprite 0 is at current position
-        if (x >= sprite_x && x < sprite_x + 8 && y >= sprite_y && y < sprite_y + 8) {
-            // Check left clip
-            if ((mask & 0x04) || x >= 8) {  // Show left 8 pixels for sprites
-                // Get sprite pixel
-                int sprite_x_offset = x - sprite_x;
-                int sprite_y_offset = y - sprite_y;
+    // Sprite rendering
+    u8 sprite_pixel = 0;
+    u8 sprite_palette = 0;
+    bool sprite_priority = false;
+    bool sprite_zero_rendering = false;
+    
+    if (mask & 0x10) {  // Show sprites
+        for (int i = 0; i < sprite_count; i++) {
+            if (!secondary_oam[i].active)
+                continue;
                 
-                // Handle horizontal flip
-                if (sprite_attr & 0x40) {
-                    sprite_x_offset = 7 - sprite_x_offset;
-                }
-                
-                // Handle vertical flip
-                if (sprite_attr & 0x80) {
-                    sprite_y_offset = 7 - sprite_y_offset;
-                }
-                
-                // Get pattern table address
-                u16 pattern_addr = ((ctrl & 0x08) << 9) | (sprite_tile << 4) | sprite_y_offset;
-                u8 sprite_lo = ppuRead(pattern_addr);
-                u8 sprite_hi = ppuRead(pattern_addr + 8);
-                
-                // Get pixel value
-                u8 sprite_pixel = ((sprite_lo >> (7 - sprite_x_offset)) & 1) |
-                                 (((sprite_hi >> (7 - sprite_x_offset)) & 1) << 1);
-                
-                // Sprite 0 hit: both background and sprite pixels are non-transparent
-                if (bg_pixel != 0 && sprite_pixel != 0) {
-                    status |= 0x40;  // Set sprite 0 hit flag
+            int sprite_x = secondary_oam[i].x;
+            
+            // Check if sprite is at current x position
+            if (x >= sprite_x && x < sprite_x + 8) {
+                // Check left clip
+                if ((mask & 0x04) || x >= 8) {  // Show left 8 pixels for sprites
+                    int sprite_x_offset = x - sprite_x;
+                    
+                    // Handle horizontal flip
+                    if (secondary_oam[i].attr & 0x40) {
+                        sprite_x_offset = 7 - sprite_x_offset;
+                    }
+                    
+                    // Get pixel value from pattern data
+                    u8 pixel = ((secondary_oam[i].pattern_lo >> (7 - sprite_x_offset)) & 1) |
+                              (((secondary_oam[i].pattern_hi >> (7 - sprite_x_offset)) & 1) << 1);
+                    
+                    // Only use sprite if pixel is non-transparent
+                    if (pixel != 0) {
+                        // First non-transparent sprite pixel wins
+                        if (sprite_pixel == 0) {
+                            sprite_pixel = pixel;
+                            sprite_palette = (secondary_oam[i].attr & 0x03) + 4;  // Sprite palettes are 4-7
+                            sprite_priority = (secondary_oam[i].attr & 0x20) != 0;  // Priority bit
+                            
+                            // Check if this is sprite 0
+                            if (i == 0 && sprite_zero_on_line) {
+                                sprite_zero_rendering = true;
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+    
+    // Sprite 0 hit detection
+    if (sprite_zero_rendering && bg_pixel != 0 && sprite_pixel != 0 && x != 255) {
+        status |= 0x40;  // Set sprite 0 hit flag
+    }
+
+    // Priority multiplexer
+    u8 final_pixel;
+    u8 final_palette;
+    
+    if (bg_pixel == 0 && sprite_pixel == 0) {
+        // Both transparent - use backdrop color
+        final_pixel = 0;
+        final_palette = 0;
+    }
+    else if (bg_pixel == 0 && sprite_pixel > 0) {
+        // Background transparent, sprite visible
+        final_pixel = sprite_pixel;
+        final_palette = sprite_palette;
+    }
+    else if (bg_pixel > 0 && sprite_pixel == 0) {
+        // Sprite transparent, background visible
+        final_pixel = bg_pixel;
+        final_palette = bg_palette;
+    }
+    else {
+        // Both visible - check priority
+        if (sprite_priority) {
+            // Sprite behind background
+            final_pixel = bg_pixel;
+            final_palette = bg_palette;
+        } else {
+            // Sprite in front of background
+            final_pixel = sprite_pixel;
+            final_palette = sprite_palette;
+        }
+    }
 
     // Final color
-    u32 color = getColorFromPalette(bg_palette, bg_pixel);
+    u32 color = getColorFromPalette(final_palette, final_pixel);
     framebuffer[y * NES_WIDTH + x] = color;
 }
 
@@ -288,6 +332,87 @@ void PPU::step()
 {
     // Visible scanlines (0-239) and pre-render scanline (261)
     if (scanline < 240 || scanline == 261) {
+        
+        // Sprite evaluation at cycle 257-320
+        if (cycle == 257 && scanline < 240) {
+            sprite_count = 0;
+            sprite_zero_on_line = false;
+            
+            // 8x8 sprite size (8x16 not implemented yet)
+            int sprite_height = 8;
+            
+            // Evaluate all 64 sprites
+            for (int i = 0; i < 64; i++) {
+                int sprite_y = oam[i * 4];
+                int diff = scanline - sprite_y;
+                
+                // Check if sprite is on this scanline
+                if (diff >= 0 && diff < sprite_height) {
+                    if (sprite_count < 8) {
+                        // Copy sprite to secondary OAM
+                        secondary_oam[sprite_count].y = sprite_y;
+                        secondary_oam[sprite_count].tile = oam[i * 4 + 1];
+                        secondary_oam[sprite_count].attr = oam[i * 4 + 2];
+                        secondary_oam[sprite_count].x = oam[i * 4 + 3];
+                        secondary_oam[sprite_count].active = false;  // Will be set during fetch
+                        
+                        if (i == 0) {
+                            sprite_zero_on_line = true;
+                        }
+                        
+                        sprite_count++;
+                    } else {
+                        // Sprite overflow
+                        status |= 0x20;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Sprite pattern fetches at cycle 321-340
+        if (cycle >= 321 && cycle <= 340 && scanline < 240) {
+            int fetch_cycle = (cycle - 321) / 8;
+            if (fetch_cycle < sprite_count) {
+                int phase = (cycle - 321) % 8;
+                
+                if (phase == 0) {
+                    // Start fetching this sprite
+                    secondary_oam[fetch_cycle].active = true;
+                }
+                else if (phase == 5) {
+                    // Fetch pattern low byte
+                    int sprite_y_offset = scanline - secondary_oam[fetch_cycle].y;
+                    
+                    // Handle vertical flip
+                    if (secondary_oam[fetch_cycle].attr & 0x80) {
+                        sprite_y_offset = 7 - sprite_y_offset;
+                    }
+                    
+                    // Get pattern table address
+                    u16 pattern_addr = ((ctrl & 0x08) << 9) | 
+                                      (secondary_oam[fetch_cycle].tile << 4) | 
+                                      sprite_y_offset;
+                    secondary_oam[fetch_cycle].pattern_lo = ppuRead(pattern_addr);
+                }
+                else if (phase == 7) {
+                    // Fetch pattern high byte
+                    int sprite_y_offset = scanline - secondary_oam[fetch_cycle].y;
+                    
+                    // Handle vertical flip
+                    if (secondary_oam[fetch_cycle].attr & 0x80) {
+                        sprite_y_offset = 7 - sprite_y_offset;
+                    }
+                    
+                    // Get pattern table address
+                    u16 pattern_addr = ((ctrl & 0x08) << 9) | 
+                                      (secondary_oam[fetch_cycle].tile << 4) | 
+                                      (sprite_y_offset + 8);
+                    secondary_oam[fetch_cycle].pattern_hi = ppuRead(pattern_addr);
+                }
+            }
+        }
+        
         // Background fetches
         if ((cycle >= 1 && cycle <= 256) || (cycle >= 321 && cycle <= 336)) {
             // Shift registers

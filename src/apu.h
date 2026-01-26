@@ -4,12 +4,17 @@
 #include "types.h"
 #include <cstdint>
 
+class Sound;
+
 class APU {
 public:
     APU();
 
     void reset();
     void step();
+    
+    // Connect sound output
+    void connect(Sound* snd);
 
     // CPU interface (registers $4000-$4017)
     u8 readRegister(u16 addr);
@@ -50,32 +55,49 @@ public:
     float getOutput() const;
 
 private:
+    void clockTimers();
+    void clockLengthCounters();
+    void clockEnvelopes();
+    void clockTriangleLinear();
+    
+    // Pulse duty cycle sequences
+    static const u8 duty_table[4][8];
+    
     // Pulse channels
     struct Pulse {
         u8 duty;
         u8 volume;
+        u8 envelope_volume;
+        u8 envelope_counter;
+        bool envelope_start;
         bool constant_volume;
         bool length_halt;
         u16 timer;
         u16 timer_period;
         u8 length_counter;
+        u8 sequence_pos;
         bool enabled;
     } pulse[2];
 
     // Triangle channel
     struct Triangle {
         bool control;
+        bool linear_reload_flag;
         u8 linear_counter;
         u8 linear_reload;
         u16 timer;
         u16 timer_period;
         u8 length_counter;
+        u8 sequence_pos;
         bool enabled;
     } triangle;
 
     // Noise channel
     struct Noise {
         u8 volume;
+        u8 envelope_volume;
+        u8 envelope_counter;
+        bool envelope_start;
         bool constant_volume;
         bool length_halt;
         bool mode;
@@ -104,6 +126,14 @@ private:
     u32 frame_counter;
 
     u64 cycles;
+    
+    // Sample generation
+    Sound* sound = nullptr;
+    float sample_accumulator = 0.0f;
+    int samples_this_frame = 0;
+    static constexpr float CPU_CLOCK_RATE = 1789773.0f;
+    static constexpr float SAMPLE_RATE = 44100.0f;
+    static constexpr float CYCLES_PER_SAMPLE = CPU_CLOCK_RATE / SAMPLE_RATE;
 };
 
 #endif // APU_H

@@ -4,11 +4,9 @@
 
 Sound::Sound()
     : apu(nullptr)
-    , sample_accumulator(0.0f)
-    , samples_accumulated(0)
-    , clock_counter(0.0f)
 {
     std::memset(samples, 0, sizeof(samples));
+    sample_buffer.reserve(MAX_BUFFER_SIZE);
 }
 
 Sound::~Sound()
@@ -32,28 +30,32 @@ void Sound::stop()
     sf::SoundStream::stop();
 }
 
+void Sound::pushSample(float sample)
+{
+    // Clamp and convert to 16-bit
+    if (sample > 1.0f) sample = 1.0f;
+    if (sample < -1.0f) sample = -1.0f;
+    
+    sf::Int16 int_sample = static_cast<sf::Int16>(sample * 32767.0f);
+    
+    if (sample_buffer.size() < MAX_BUFFER_SIZE) {
+        sample_buffer.push_back(int_sample);
+    }
+}
+
 bool Sound::onGetData(Chunk& data)
 {
-    if (!apu) {
-        // Fill with silence
-        std::memset(samples, 0, sizeof(samples));
-        data.samples = samples;
-        data.sampleCount = BUFFER_SIZE;
-        return true;
+    // Copy available samples
+    size_t samples_to_copy = std::min(sample_buffer.size(), (size_t)BUFFER_SIZE);
+    
+    if (samples_to_copy > 0) {
+        std::memcpy(samples, sample_buffer.data(), samples_to_copy * sizeof(sf::Int16));
+        sample_buffer.erase(sample_buffer.begin(), sample_buffer.begin() + samples_to_copy);
     }
     
-    // Generate samples from APU
-    for (unsigned int i = 0; i < BUFFER_SIZE; i++) {
-        // Get current APU output (simplified - just return a mix of all channels)
-        // In a real implementation, you'd call APU methods to get the actual output
-        float output = apu->getOutput();
-        
-        // Convert to 16-bit signed integer
-        output = output * 32767.0f; // Scale to int16 range
-        if (output > 32767.0f) output = 32767.0f;
-        if (output < -32768.0f) output = -32768.0f;
-        
-        samples[i] = static_cast<sf::Int16>(output);
+    // Fill remaining with silence if needed
+    if (samples_to_copy < BUFFER_SIZE) {
+        std::memset(samples + samples_to_copy, 0, (BUFFER_SIZE - samples_to_copy) * sizeof(sf::Int16));
     }
     
     data.samples = samples;
@@ -63,6 +65,5 @@ bool Sound::onGetData(Chunk& data)
 
 void Sound::onSeek(sf::Time timeOffset)
 {
-    // Not implemented - seeking not needed for real-time audio
     (void)timeOffset;
 }
