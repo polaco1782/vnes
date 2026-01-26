@@ -22,7 +22,9 @@ struct INESHeader {
 enum class Mirroring {
     HORIZONTAL,
     VERTICAL,
-    FOUR_SCREEN
+    FOUR_SCREEN,
+    SINGLE_LOWER,
+    SINGLE_UPPER
 };
 
 class Cartridge {
@@ -43,13 +45,20 @@ public:
     const std::vector<uint8_t>& getPrgRom() const { return prg_rom; }
     const std::vector<uint8_t>& getChrRom() const { return chr_rom; }
 
-    // Read/Write (for mapper implementations)
+    // CPU interface for PRG space ($6000-$FFFF)
     uint8_t readPrg(uint16_t addr) const;
+    void writePrg(uint16_t addr, uint8_t data);
+    
+    // PPU interface for CHR space ($0000-$1FFF)
     uint8_t readChr(uint16_t addr) const;
     void writeChr(uint16_t addr, uint8_t data);
 
 private:
     bool parseHeader(const INESHeader& header);
+    
+    // MMC1 (Mapper 1) specific
+    void mmc1Write(uint16_t addr, uint8_t data);
+    void mmc1UpdateBanks();
 
     bool loaded;
     uint8_t mapper;
@@ -58,6 +67,19 @@ private:
 
     std::vector<uint8_t> prg_rom;  // Program ROM
     std::vector<uint8_t> chr_rom;  // Character ROM (can be RAM if size=0)
+    std::vector<uint8_t> prg_ram;  // PRG RAM at $6000-$7FFF (8KB)
+    
+    // MMC1 registers
+    uint8_t mmc1_shift;        // 5-bit shift register
+    uint8_t mmc1_shift_count;  // Number of bits written
+    uint8_t mmc1_ctrl;         // Control register
+    uint8_t mmc1_chr_bank0;    // CHR bank 0
+    uint8_t mmc1_chr_bank1;    // CHR bank 1
+    uint8_t mmc1_prg_bank;     // PRG bank
+    
+    // Computed bank offsets
+    uint32_t prg_bank_offset[2];  // Two 16KB PRG banks
+    uint32_t chr_bank_offset[2];  // Two 4KB CHR banks
 };
 
 #endif // CARTRIDGE_H

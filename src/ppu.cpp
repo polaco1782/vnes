@@ -287,7 +287,9 @@ void PPU::renderPixel()
     }
     
     // Sprite 0 hit detection
-    if (sprite_zero_rendering && bg_pixel != 0 && sprite_pixel != 0 && x != 255) {
+    // Can only trigger once per frame and not at x=255
+    if (sprite_zero_rendering && bg_pixel != 0 && sprite_pixel != 0 && 
+        x != 255 && !(status & 0x40)) {
         status |= 0x40;  // Set sprite 0 hit flag
     }
 
@@ -338,8 +340,8 @@ void PPU::step()
             sprite_count = 0;
             sprite_zero_on_line = false;
             
-            // 8x8 sprite size (8x16 not implemented yet)
-            int sprite_height = 8;
+            // Sprite height: 8 or 16 based on PPUCTRL bit 5
+            int sprite_height = (ctrl & 0x20) ? 16 : 8;
             
             // Evaluate all 64 sprites
             for (int i = 0; i < 64; i++) {
@@ -382,32 +384,60 @@ void PPU::step()
                 }
                 else if (phase == 5) {
                     // Fetch pattern low byte
+                    int sprite_height = (ctrl & 0x20) ? 16 : 8;
                     int sprite_y_offset = scanline - secondary_oam[fetch_cycle].y;
                     
                     // Handle vertical flip
                     if (secondary_oam[fetch_cycle].attr & 0x80) {
-                        sprite_y_offset = 7 - sprite_y_offset;
+                        sprite_y_offset = sprite_height - 1 - sprite_y_offset;
                     }
                     
                     // Get pattern table address
-                    u16 pattern_addr = ((ctrl & 0x08) << 9) | 
-                                      (secondary_oam[fetch_cycle].tile << 4) | 
-                                      sprite_y_offset;
+                    u16 pattern_addr;
+                    u8 tile = secondary_oam[fetch_cycle].tile;
+                    
+                    if (sprite_height == 8) {
+                        // 8x8 sprites: use PPUCTRL bit 3 for pattern table
+                        pattern_addr = ((ctrl & 0x08) << 9) | (tile << 4) | sprite_y_offset;
+                    } else {
+                        // 8x16 sprites: tile bit 0 selects pattern table, use top/bottom tile
+                        int table = tile & 0x01;
+                        tile &= 0xFE;
+                        if (sprite_y_offset >= 8) {
+                            sprite_y_offset -= 8;
+                            tile += 1;
+                        }
+                        pattern_addr = (table << 12) | (tile << 4) | sprite_y_offset;
+                    }
                     secondary_oam[fetch_cycle].pattern_lo = ppuRead(pattern_addr);
                 }
                 else if (phase == 7) {
                     // Fetch pattern high byte
+                    int sprite_height = (ctrl & 0x20) ? 16 : 8;
                     int sprite_y_offset = scanline - secondary_oam[fetch_cycle].y;
                     
                     // Handle vertical flip
                     if (secondary_oam[fetch_cycle].attr & 0x80) {
-                        sprite_y_offset = 7 - sprite_y_offset;
+                        sprite_y_offset = sprite_height - 1 - sprite_y_offset;
                     }
                     
                     // Get pattern table address
-                    u16 pattern_addr = ((ctrl & 0x08) << 9) | 
-                                      (secondary_oam[fetch_cycle].tile << 4) | 
-                                      (sprite_y_offset + 8);
+                    u16 pattern_addr;
+                    u8 tile = secondary_oam[fetch_cycle].tile;
+                    
+                    if (sprite_height == 8) {
+                        // 8x8 sprites: use PPUCTRL bit 3 for pattern table
+                        pattern_addr = ((ctrl & 0x08) << 9) | (tile << 4) | sprite_y_offset | 8;
+                    } else {
+                        // 8x16 sprites: tile bit 0 selects pattern table, use top/bottom tile
+                        int table = tile & 0x01;
+                        tile &= 0xFE;
+                        if (sprite_y_offset >= 8) {
+                            sprite_y_offset -= 8;
+                            tile += 1;
+                        }
+                        pattern_addr = (table << 12) | (tile << 4) | sprite_y_offset | 8;
+                    }
                     secondary_oam[fetch_cycle].pattern_hi = ppuRead(pattern_addr);
                 }
             }
@@ -510,7 +540,16 @@ void PPU::step()
 
     // Advance cycle/scanline
     cycle++;
-    if (cycle > 340) {
+    
+    // Odd frame cycle skip: on odd frames with rendering enabled,
+    // skip cycle 0 of scanline 0 (effectively skip last cycle of pre-render)
+    if (scanline == 261 && cycle == 340 && odd_frame && (mask & 0x18)) {
+        cycle = 0;
+        scanline = 0;
+        frame_complete = true;
+        odd_frame = false;
+    }
+    else if (cycle > 340) {
         cycle = 0;
         scanline++;
         if (scanline > 261) {
