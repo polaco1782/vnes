@@ -1,0 +1,397 @@
+#include "ppu.h"
+#include "bus.h"
+#include "cartridge.h"
+
+// NES color palette (2C02 NTSC palette)
+static const u32 palette_colors[64] = {
+    0x666666, 0x002A88, 0x1412A7, 0x3B00A4, 0x5C007E, 0x6E0040, 0x6C0600, 0x561D00,
+    0x333500, 0x0B4800, 0x005200, 0x004F08, 0x00404D, 0x000000, 0x000000, 0x000000,
+    0xADADAD, 0x155FD9, 0x4240FF, 0x7527FE, 0xA01ACC, 0xB71E7B, 0xB53120, 0x994E00,
+    0x6B6D00, 0x388700, 0x0C9300, 0x008F32, 0x007C8D, 0x000000, 0x000000, 0x000000,
+    0xFFFEFF, 0x64B0FF, 0x9290FF, 0xC676FF, 0xF36AFF, 0xFE6ECC, 0xFE8170, 0xEA9E22,
+    0xBCBE00, 0x88D800, 0x5CE430, 0x45E082, 0x48CDDE, 0x4F4F4F, 0x000000, 0x000000,
+    0xFFFEFF, 0xC0DFFF, 0xD3D2FF, 0xE8C8FF, 0xFBC2FF, 0xFEC4EA, 0xFECCC5, 0xF7D8A5,
+    0xE4E594, 0xCFEF96, 0xBDF4AB, 0xB3F3CC, 0xB5EBF2, 0xB8B8B8, 0x000000, 0x000000
+};
+
+PPU::PPU()
+    : ctrl(0), mask(0), status(0), oam_addr(0)
+    , v(0), t(0), fine_x(0), w(false)
+    , data_buffer(0)
+    , scanline(0), cycle(0), odd_frame(false)
+    , frame_complete(false), nmi_occurred(false)
+    , nt_byte(0), at_byte(0), bg_lo(0), bg_hi(0)
+    , bg_shifter_lo(0), bg_shifter_hi(0)
+    , at_shifter_lo(0), at_shifter_hi(0)
+    , at_latch_lo(0), at_latch_hi(0)
+    , bus(nullptr), cartridge(nullptr)
+{
+    for (int i = 0; i < NES_WIDTH * NES_HEIGHT; i++)
+        framebuffer[i] = 0;
+    for (int i = 0; i < 2048; i++)
+        nametable[i] = 0;
+    for (int i = 0; i < 32; i++)
+        palette[i] = 0;
+    for (int i = 0; i < 256; i++)
+        oam[i] = 0;
+}
+
+void PPU::connect(Bus* b, Cartridge* cart)
+{
+    bus = b;
+    cartridge = cart;
+}
+
+void PPU::reset()
+{
+    ctrl = 0;
+    mask = 0;
+    status = 0;
+    oam_addr = 0;
+    v = 0;
+    t = 0;
+    fine_x = 0;
+    w = false;
+    data_buffer = 0;
+    scanline = 0;
+    cycle = 0;
+    odd_frame = false;
+    frame_complete = false;
+    nmi_occurred = false;
+}
+
+u8 PPU::ppuRead(u16 addr)
+{
+    addr &= 0x3FFF;
+
+    if (addr < 0x2000) {
+        // Pattern tables (CHR ROM/RAM)
+        return cartridge->readChr(addr);
+    }
+    else if (addr < 0x3F00) {
+        // Nametables
+        addr &= 0x0FFF;
+        // Handle mirroring
+        if (cartridge->getMirroring() == Mirroring::VERTICAL) {
+            addr &= 0x07FF;
+        } else if (cartridge->getMirroring() == Mirroring::HORIZONTAL) {
+            if (addr < 0x0800)
+                addr &= 0x03FF;
+            else
+                addr = 0x0400 + (addr & 0x03FF);
+        }
+        return nametable[addr & 0x07FF];
+    }
+    else {
+        // Palette
+        addr &= 0x1F;
+        if (addr == 0x10 || addr == 0x14 || addr == 0x18 || addr == 0x1C)
+            addr &= 0x0F;
+        return palette[addr];
+    }
+}
+
+void PPU::ppuWrite(u16 addr, u8 data)
+{
+    addr &= 0x3FFF;
+
+    if (addr < 0x2000) {
+        // Pattern tables (CHR RAM only)
+        cartridge->writeChr(addr, data);
+    }
+    else if (addr < 0x3F00) {
+        // Nametables
+        addr &= 0x0FFF;
+        if (cartridge->getMirroring() == Mirroring::VERTICAL) {
+            addr &= 0x07FF;
+        } else if (cartridge->getMirroring() == Mirroring::HORIZONTAL) {
+            if (addr < 0x0800)
+                addr &= 0x03FF;
+            else
+                addr = 0x0400 + (addr & 0x03FF);
+        }
+        nametable[addr & 0x07FF] = data;
+    }
+    else {
+        // Palette
+        addr &= 0x1F;
+        if (addr == 0x10 || addr == 0x14 || addr == 0x18 || addr == 0x1C)
+            addr &= 0x0F;
+        palette[addr] = data;
+    }
+}
+
+u8 PPU::readRegister(u16 addr)
+{
+    u8 data = 0;
+
+    switch (addr & 0x07) {
+        case 2: // PPUSTATUS
+            data = (status & 0xE0) | (data_buffer & 0x1F);
+            status &= ~0x80;  // Clear vblank flag
+            w = false;        // Reset write toggle
+            break;
+
+        case 4: // OAMDATA
+            data = oam[oam_addr];
+            break;
+
+        case 7: // PPUDATA
+            data = data_buffer;
+            data_buffer = ppuRead(v);
+            // Palette data is not buffered
+            if (v >= 0x3F00)
+                data = data_buffer;
+            v += (ctrl & 0x04) ? 32 : 1;
+            break;
+    }
+
+    return data;
+}
+
+void PPU::writeRegister(u16 addr, u8 data)
+{
+    switch (addr & 0x07) {
+        case 0: // PPUCTRL
+            ctrl = data;
+            t = (t & 0xF3FF) | ((data & 0x03) << 10);
+            break;
+
+        case 1: // PPUMASK
+            mask = data;
+            break;
+
+        case 3: // OAMADDR
+            oam_addr = data;
+            break;
+
+        case 4: // OAMDATA
+            oam[oam_addr++] = data;
+            break;
+
+        case 5: // PPUSCROLL
+            if (!w) {
+                fine_x = data & 0x07;
+                t = (t & 0xFFE0) | (data >> 3);
+            } else {
+                t = (t & 0x8C1F) | ((data & 0x07) << 12) | ((data & 0xF8) << 2);
+            }
+            w = !w;
+            break;
+
+        case 6: // PPUADDR
+            if (!w) {
+                t = (t & 0x00FF) | ((data & 0x3F) << 8);
+            } else {
+                t = (t & 0xFF00) | data;
+                v = t;
+            }
+            w = !w;
+            break;
+
+        case 7: // PPUDATA
+            ppuWrite(v, data);
+            v += (ctrl & 0x04) ? 32 : 1;
+            break;
+    }
+}
+
+void PPU::writeDMA(u8 data)
+{
+    // OAM DMA - transfer 256 bytes from CPU memory
+    u16 addr = data << 8;
+    for (int i = 0; i < 256; i++) {
+        oam[oam_addr++] = bus->cpuRead(addr + i);
+    }
+}
+
+u32 PPU::getColorFromPalette(u8 pal, u8 pixel)
+{
+    u8 index = ppuRead(0x3F00 + (pal << 2) + pixel) & 0x3F;
+    return palette_colors[index] | 0xFF000000;  // Add alpha
+}
+
+void PPU::renderPixel()
+{
+    int x = cycle - 1;
+    int y = scanline;
+
+    if (x < 0 || x >= NES_WIDTH || y < 0 || y >= NES_HEIGHT)
+        return;
+
+    u8 bg_pixel = 0;
+    u8 bg_palette = 0;
+
+    // Background rendering
+    if (mask & 0x08) {  // Show background
+        if ((mask & 0x02) || x >= 8) {  // Show left 8 pixels
+            u16 bit_mux = 0x8000 >> fine_x;
+            u8 p0 = (bg_shifter_lo & bit_mux) ? 1 : 0;
+            u8 p1 = (bg_shifter_hi & bit_mux) ? 2 : 0;
+            bg_pixel = p0 | p1;
+
+            u8 a0 = (at_shifter_lo & bit_mux) ? 1 : 0;
+            u8 a1 = (at_shifter_hi & bit_mux) ? 2 : 0;
+            bg_palette = a0 | a1;
+        }
+    }
+    
+    // Sprite 0 hit detection
+    // Check if sprite 0 is on this scanline and at this x position
+    if ((mask & 0x18) == 0x18) {  // Both background and sprites enabled
+        u8 sprite_y = oam[0];
+        u8 sprite_tile = oam[1];
+        u8 sprite_attr = oam[2];
+        u8 sprite_x = oam[3];
+        
+        // Check if sprite 0 is at current position
+        if (x >= sprite_x && x < sprite_x + 8 && y >= sprite_y && y < sprite_y + 8) {
+            // Check left clip
+            if ((mask & 0x04) || x >= 8) {  // Show left 8 pixels for sprites
+                // Get sprite pixel
+                int sprite_x_offset = x - sprite_x;
+                int sprite_y_offset = y - sprite_y;
+                
+                // Handle horizontal flip
+                if (sprite_attr & 0x40) {
+                    sprite_x_offset = 7 - sprite_x_offset;
+                }
+                
+                // Handle vertical flip
+                if (sprite_attr & 0x80) {
+                    sprite_y_offset = 7 - sprite_y_offset;
+                }
+                
+                // Get pattern table address
+                u16 pattern_addr = ((ctrl & 0x08) << 9) | (sprite_tile << 4) | sprite_y_offset;
+                u8 sprite_lo = ppuRead(pattern_addr);
+                u8 sprite_hi = ppuRead(pattern_addr + 8);
+                
+                // Get pixel value
+                u8 sprite_pixel = ((sprite_lo >> (7 - sprite_x_offset)) & 1) |
+                                 (((sprite_hi >> (7 - sprite_x_offset)) & 1) << 1);
+                
+                // Sprite 0 hit: both background and sprite pixels are non-transparent
+                if (bg_pixel != 0 && sprite_pixel != 0) {
+                    status |= 0x40;  // Set sprite 0 hit flag
+                }
+            }
+        }
+    }
+
+    // Final color
+    u32 color = getColorFromPalette(bg_palette, bg_pixel);
+    framebuffer[y * NES_WIDTH + x] = color;
+}
+
+void PPU::step()
+{
+    // Visible scanlines (0-239) and pre-render scanline (261)
+    if (scanline < 240 || scanline == 261) {
+        // Background fetches
+        if ((cycle >= 1 && cycle <= 256) || (cycle >= 321 && cycle <= 336)) {
+            // Shift registers
+            bg_shifter_lo <<= 1;
+            bg_shifter_hi <<= 1;
+            at_shifter_lo <<= 1;
+            at_shifter_hi <<= 1;
+
+            // Load attribute shifters
+            if (at_latch_lo) at_shifter_lo |= 1;
+            if (at_latch_hi) at_shifter_hi |= 1;
+
+            switch (cycle & 0x07) {
+                case 1:  // Nametable byte
+                    // Load shifters
+                    bg_shifter_lo = (bg_shifter_lo & 0xFF00) | bg_lo;
+                    bg_shifter_hi = (bg_shifter_hi & 0xFF00) | bg_hi;
+                    at_latch_lo = (at_byte & 1) ? 0xFF : 0;
+                    at_latch_hi = (at_byte & 2) ? 0xFF : 0;
+                    nt_byte = ppuRead(0x2000 | (v & 0x0FFF));
+                    break;
+                case 3:  // Attribute byte
+                    at_byte = ppuRead(0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07));
+                    if (v & 0x40) at_byte >>= 4;
+                    if (v & 0x02) at_byte >>= 2;
+                    at_byte &= 0x03;
+                    break;
+                case 5:  // Pattern low
+                    bg_lo = ppuRead(((ctrl & 0x10) << 8) + (nt_byte << 4) + ((v >> 12) & 0x07));
+                    break;
+                case 7:  // Pattern high
+                    bg_hi = ppuRead(((ctrl & 0x10) << 8) + (nt_byte << 4) + ((v >> 12) & 0x07) + 8);
+                    break;
+                case 0:  // Increment horizontal
+                    if (mask & 0x18) {  // Rendering enabled
+                        if ((v & 0x001F) == 31) {
+                            v &= ~0x001F;
+                            v ^= 0x0400;
+                        } else {
+                            v++;
+                        }
+                    }
+                    break;
+            }
+        }
+
+        // Increment vertical at cycle 256
+        if (cycle == 256 && (mask & 0x18)) {
+            if ((v & 0x7000) != 0x7000) {
+                v += 0x1000;
+            } else {
+                v &= ~0x7000;
+                int y = (v & 0x03E0) >> 5;
+                if (y == 29) {
+                    y = 0;
+                    v ^= 0x0800;
+                } else if (y == 31) {
+                    y = 0;
+                } else {
+                    y++;
+                }
+                v = (v & ~0x03E0) | (y << 5);
+            }
+        }
+
+        // Copy horizontal bits at cycle 257
+        if (cycle == 257 && (mask & 0x18)) {
+            v = (v & ~0x041F) | (t & 0x041F);
+        }
+
+        // Copy vertical bits during pre-render (261), cycles 280-304
+        if (scanline == 261 && cycle >= 280 && cycle <= 304 && (mask & 0x18)) {
+            v = (v & ~0x7BE0) | (t & 0x7BE0);
+        }
+
+        // Render pixel
+        if (scanline < 240 && cycle >= 1 && cycle <= 256) {
+            renderPixel();
+        }
+    }
+
+    // Pre-render scanline - clear flags
+    if (scanline == 261 && cycle == 1) {
+        status &= ~0xE0;  // Clear vblank, sprite 0, overflow
+        nmi_occurred = false;
+    }
+
+    // VBlank begins at scanline 241
+    if (scanline == 241 && cycle == 1) {
+        status |= 0x80;  // Set vblank flag
+        if (ctrl & 0x80) {
+            nmi_occurred = true;
+        }
+    }
+
+    // Advance cycle/scanline
+    cycle++;
+    if (cycle > 340) {
+        cycle = 0;
+        scanline++;
+        if (scanline > 261) {
+            scanline = 0;
+            frame_complete = true;
+            odd_frame = !odd_frame;
+        }
+    }
+}
