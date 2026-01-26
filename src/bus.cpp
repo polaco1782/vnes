@@ -161,9 +161,9 @@ u8 Bus::cpuRead(u16 addr)
         }
     }
     else if (addr >= 0x4020) {
-        // Cartridge space
+        // Cartridge space ($6000-$FFFF handled by cartridge)
         if (cartridge) {
-            data = cartridge->readPrg(addr - 0x8000);
+            data = cartridge->readPrg(addr);
         }
     }
 
@@ -200,7 +200,9 @@ void Bus::cpuWrite(u16 addr, u8 data)
         }
     }
     else if (addr >= 0x4020) {
-        // Cartridge space (some mappers have writable registers)
-        // Currently not implemented for mapper 0
+        // Cartridge space ($6000-$FFFF: PRG RAM and mapper registers)
+        if (cartridge) {
+            cartridge->writePrg(addr, data);
+        }
     }
 }

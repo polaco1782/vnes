@@ -44,7 +44,7 @@ u8 Input::read()
     shift_count++;
     
     // After 8 reads, return 1 (open bus behavior)
-    if (shift_count >= 8) {
+    if (shift_count > 8) {
         value = 0x01;
     }
     

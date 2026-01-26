@@ -75,13 +75,18 @@ u8 PPU::ppuRead(u16 addr)
         // Nametables
         addr &= 0x0FFF;
         // Handle mirroring
-        if (cartridge->getMirroring() == Mirroring::VERTICAL) {
+        Mirroring mirror = cartridge->getMirroring();
+        if (mirror == Mirroring::VERTICAL) {
             addr &= 0x07FF;
-        } else if (cartridge->getMirroring() == Mirroring::HORIZONTAL) {
+        } else if (mirror == Mirroring::HORIZONTAL) {
             if (addr < 0x0800)
                 addr &= 0x03FF;
             else
                 addr = 0x0400 + (addr & 0x03FF);
+        } else if (mirror == Mirroring::SINGLE_LOWER) {
+            addr &= 0x03FF;  // All map to first nametable
+        } else if (mirror == Mirroring::SINGLE_UPPER) {
+            addr = 0x0400 + (addr & 0x03FF);  // All map to second nametable
         }
         return nametable[addr & 0x07FF];
     }
@@ -105,13 +110,18 @@ void PPU::ppuWrite(u16 addr, u8 data)
     else if (addr < 0x3F00) {
         // Nametables
         addr &= 0x0FFF;
-        if (cartridge->getMirroring() == Mirroring::VERTICAL) {
+        Mirroring mirror = cartridge->getMirroring();
+        if (mirror == Mirroring::VERTICAL) {
             addr &= 0x07FF;
-        } else if (cartridge->getMirroring() == Mirroring::HORIZONTAL) {
+        } else if (mirror == Mirroring::HORIZONTAL) {
             if (addr < 0x0800)
                 addr &= 0x03FF;
             else
                 addr = 0x0400 + (addr & 0x03FF);
+        } else if (mirror == Mirroring::SINGLE_LOWER) {
+            addr &= 0x03FF;  // All map to first nametable
+        } else if (mirror == Mirroring::SINGLE_UPPER) {
+            addr = 0x0400 + (addr & 0x03FF);  // All map to second nametable
         }
         nametable[addr & 0x07FF] = data;
     }
