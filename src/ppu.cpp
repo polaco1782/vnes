@@ -224,12 +224,11 @@ u32 PPU::getColorFromPalette(u8 pal, u8 pixel)
     return palette_colors[index] | 0xFF000000;  // Add alpha
 }
 
-void PPU::renderPixel()
+void PPU::fillScanlineBuffer()
 {
     int x = cycle - 1;
-    int y = scanline;
 
-    if (x < 0 || x >= NES_WIDTH || y < 0 || y >= NES_HEIGHT)
+    if (x < 0 || x >= 256)
         return;
 
     u8 bg_pixel = 0;
@@ -248,6 +247,10 @@ void PPU::renderPixel()
             bg_palette = a0 | a1;
         }
     }
+    
+    // Store background data
+    scanline_buffer.bg_pixels[x] = bg_pixel;
+    scanline_buffer.bg_palettes[x] = bg_palette;
     
     // Sprite rendering
     u8 sprite_pixel = 0;
@@ -296,48 +299,72 @@ void PPU::renderPixel()
         }
     }
     
-    // Sprite 0 hit detection
-    // Can only trigger once per frame and not at x=255
-    if (sprite_zero_rendering && bg_pixel != 0 && sprite_pixel != 0 && 
-        x != 255 && !(status & 0x40)) {
-        status |= 0x40;  // Set sprite 0 hit flag
-    }
+    // Store sprite data
+    scanline_buffer.sprite_pixels[x] = sprite_pixel;
+    scanline_buffer.sprite_palettes[x] = sprite_palette;
+    scanline_buffer.sprite_priority[x] = sprite_priority;
+    scanline_buffer.sprite_zero_hit[x] = sprite_zero_rendering;
+}
 
-    // Priority multiplexer
-    u8 final_pixel;
-    u8 final_palette;
-    
-    if (bg_pixel == 0 && sprite_pixel == 0) {
-        // Both transparent - use backdrop color
-        final_pixel = 0;
-        final_palette = 0;
-    }
-    else if (bg_pixel == 0 && sprite_pixel > 0) {
-        // Background transparent, sprite visible
-        final_pixel = sprite_pixel;
-        final_palette = sprite_palette;
-    }
-    else if (bg_pixel > 0 && sprite_pixel == 0) {
-        // Sprite transparent, background visible
-        final_pixel = bg_pixel;
-        final_palette = bg_palette;
-    }
-    else {
-        // Both visible - check priority
-        if (sprite_priority) {
-            // Sprite behind background
-            final_pixel = bg_pixel;
-            final_palette = bg_palette;
-        } else {
-            // Sprite in front of background
+void PPU::renderScanlineBurst()
+{
+    if (scanline < 0 || scanline >= NES_HEIGHT)
+        return;
+
+    int y = scanline;
+    u32* line = &framebuffer[y * NES_WIDTH];
+
+    // Render all 256 pixels in one burst
+    for (int x = 0; x < 256; x++) {
+        u8 bg_pixel = scanline_buffer.bg_pixels[x];
+        u8 bg_palette = scanline_buffer.bg_palettes[x];
+        u8 sprite_pixel = scanline_buffer.sprite_pixels[x];
+        u8 sprite_palette = scanline_buffer.sprite_palettes[x];
+        bool sprite_priority = scanline_buffer.sprite_priority[x];
+        bool sprite_zero_rendering = scanline_buffer.sprite_zero_hit[x];
+
+        // Sprite 0 hit detection
+        // Can only trigger once per frame and not at x=255
+        if (sprite_zero_rendering && bg_pixel != 0 && sprite_pixel != 0 && 
+            x != 255 && !(status & 0x40)) {
+            status |= 0x40;  // Set sprite 0 hit flag
+        }
+
+        // Priority multiplexer
+        u8 final_pixel;
+        u8 final_palette;
+        
+        if (bg_pixel == 0 && sprite_pixel == 0) {
+            // Both transparent - use backdrop color
+            final_pixel = 0;
+            final_palette = 0;
+        }
+        else if (bg_pixel == 0 && sprite_pixel > 0) {
+            // Background transparent, sprite visible
             final_pixel = sprite_pixel;
             final_palette = sprite_palette;
         }
-    }
+        else if (bg_pixel > 0 && sprite_pixel == 0) {
+            // Sprite transparent, background visible
+            final_pixel = bg_pixel;
+            final_palette = bg_palette;
+        }
+        else {
+            // Both visible - check priority
+            if (sprite_priority) {
+                // Sprite behind background
+                final_pixel = bg_pixel;
+                final_palette = bg_palette;
+            } else {
+                // Sprite in front of background
+                final_pixel = sprite_pixel;
+                final_palette = sprite_palette;
+            }
+        }
 
-    // Final color
-    u32 color = getColorFromPalette(final_palette, final_pixel);
-    framebuffer[y * NES_WIDTH + x] = color;
+        // Write final color directly to framebuffer
+        line[x] = getColorFromPalette(final_palette, final_pixel);
+    }
 }
 
 void PPU::step()
@@ -528,9 +555,14 @@ void PPU::step()
             v = (v & ~0x7BE0) | (t & 0x7BE0);
         }
 
-        // Render pixel
+        // Fill scanline buffer during rendering
         if (scanline < 240 && cycle >= 1 && cycle <= 256) {
-            renderPixel();
+            fillScanlineBuffer();
+        }
+
+        // Render entire scanline in burst at cycle 257
+        if (scanline < 240 && cycle == 257) {
+            renderScanlineBurst();
         }
     }
 

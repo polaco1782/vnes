@@ -63,7 +63,8 @@ private:
     void ppuWrite(u16 addr, u8 data);
 
     // Rendering helpers
-    void renderPixel();
+    void fillScanlineBuffer();
+    void renderScanlineBurst();
     u32 getColorFromPalette(u8 palette, u8 pixel);
 
     // Registers
@@ -118,6 +119,17 @@ private:
     Sprite secondary_oam[8];  // Up to 8 sprites per scanline
     int sprite_count;
     bool sprite_zero_on_line;
+
+    // Scanline rendering buffer for burst rendering
+    struct ScanlineData {
+        u8 bg_pixels[256];        // Background pixel values (0-3)
+        u8 bg_palettes[256];      // Background palette indices (0-3)
+        u8 sprite_pixels[256];    // Sprite pixel values (0-3)
+        u8 sprite_palettes[256];  // Sprite palette indices (4-7)
+        bool sprite_priority[256]; // Sprite behind background flag
+        bool sprite_zero_hit[256]; // Sprite 0 potential hit positions
+    };
+    ScanlineData scanline_buffer;
 
     // Output
     u32 framebuffer[NES_WIDTH * NES_HEIGHT];
