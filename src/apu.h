@@ -56,7 +56,9 @@ public:
 
 private:
     void clockTimers();
+    void clockTriangleTimer();
     void clockLengthCounters();
+    void clockSweeps();
     void clockEnvelopes();
     void clockTriangleLinear();
     
@@ -72,6 +74,12 @@ private:
         bool envelope_start;
         bool constant_volume;
         bool length_halt;
+        bool sweep_enabled;
+        bool sweep_negate;
+        bool sweep_reload;
+        u8 sweep_shift;
+        u8 sweep_period;
+        u8 sweep_counter;
         u16 timer;
         u16 timer_period;
         u8 length_counter;

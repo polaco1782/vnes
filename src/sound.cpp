@@ -1,12 +1,13 @@
 #include "sound.h"
 #include "apu.h"
 #include <cstring>
+#include <algorithm>
 
 Sound::Sound()
     : apu(nullptr)
 {
     std::memset(samples, 0, sizeof(samples));
-    sample_buffer.reserve(MAX_BUFFER_SIZE);
+    sample_buffer.resize(MAX_BUFFER_SIZE);
 }
 
 Sound::~Sound()
@@ -32,30 +33,48 @@ void Sound::stop()
 
 void Sound::pushSample(float sample)
 {
+    // DC-block filter to reduce low-frequency offsets
+    float filtered = sample - dc_prev_input + (DC_BLOCK_R * dc_prev_output);
+    dc_prev_input = sample;
+    dc_prev_output = filtered;
+
     // Clamp and convert to 16-bit
-    if (sample > 1.0f) sample = 1.0f;
-    if (sample < -1.0f) sample = -1.0f;
+    if (filtered > 1.0f) filtered = 1.0f;
+    if (filtered < -1.0f) filtered = -1.0f;
     
-    sf::Int16 int_sample = static_cast<sf::Int16>(sample * 32767.0f);
-    
-    if (sample_buffer.size() < MAX_BUFFER_SIZE) {
-        sample_buffer.push_back(int_sample);
+    sf::Int16 int_sample = static_cast<sf::Int16>(filtered * 32767.0f);
+
+    std::lock_guard<std::mutex> lock(buffer_mutex);
+    sample_buffer[buffer_write] = int_sample;
+    buffer_write = (buffer_write + 1) % MAX_BUFFER_SIZE;
+    if (buffer_count < MAX_BUFFER_SIZE) {
+        buffer_count++;
+    } else {
+        // Overwrite oldest sample when buffer is full
+        buffer_read = (buffer_read + 1) % MAX_BUFFER_SIZE;
     }
 }
 
 bool Sound::onGetData(Chunk& data)
 {
-    // Copy available samples
-    size_t samples_to_copy = std::min(sample_buffer.size(), (size_t)BUFFER_SIZE);
-    
-    if (samples_to_copy > 0) {
-        std::memcpy(samples, sample_buffer.data(), samples_to_copy * sizeof(sf::Int16));
-        sample_buffer.erase(sample_buffer.begin(), sample_buffer.begin() + samples_to_copy);
+    size_t samples_to_copy = 0;
+
+    {
+        std::lock_guard<std::mutex> lock(buffer_mutex);
+        samples_to_copy = std::min(buffer_count, (size_t)BUFFER_SIZE);
+        for (size_t i = 0; i < samples_to_copy; i++) {
+            samples[i] = sample_buffer[buffer_read];
+            buffer_read = (buffer_read + 1) % MAX_BUFFER_SIZE;
+        }
+        buffer_count -= samples_to_copy;
+        if (samples_to_copy > 0) {
+            last_sample = samples[samples_to_copy - 1];
+        }
     }
-    
-    // Fill remaining with silence if needed
+
+    // Fill remaining with last sample to avoid hard clicks
     if (samples_to_copy < BUFFER_SIZE) {
-        std::memset(samples + samples_to_copy, 0, (BUFFER_SIZE - samples_to_copy) * sizeof(sf::Int16));
+        std::fill(samples + samples_to_copy, samples + BUFFER_SIZE, last_sample);
     }
     
     data.samples = samples;

@@ -4,6 +4,7 @@
 #include "types.h"
 #include <SFML/Audio.hpp>
 #include <vector>
+#include <mutex>
 
 class APU;
 
@@ -31,7 +32,18 @@ private:
     static const unsigned int BUFFER_SIZE = 2048;
     
     sf::Int16 samples[BUFFER_SIZE];
+
     std::vector<sf::Int16> sample_buffer;
+    size_t buffer_read = 0;
+    size_t buffer_write = 0;
+    size_t buffer_count = 0;
+    sf::Int16 last_sample = 0;
+    std::mutex buffer_mutex;
+
+    // DC-block filter state
+    float dc_prev_input = 0.0f;
+    float dc_prev_output = 0.0f;
+    static constexpr float DC_BLOCK_R = 0.995f;
 
     static const size_t MAX_BUFFER_SIZE = SAMPLE_RATE; // 1 second buffer
 };

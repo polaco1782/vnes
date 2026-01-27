@@ -40,6 +40,12 @@ APU::APU()
         pulse[i].envelope_start = false;
         pulse[i].constant_volume = false;
         pulse[i].length_halt = false;
+        pulse[i].sweep_enabled = false;
+        pulse[i].sweep_negate = false;
+        pulse[i].sweep_reload = false;
+        pulse[i].sweep_shift = 0;
+        pulse[i].sweep_period = 0;
+        pulse[i].sweep_counter = 0;
         pulse[i].timer = 0;
         pulse[i].timer_period = 0;
         pulse[i].length_counter = 0;
@@ -108,17 +114,7 @@ void APU::clockTimers()
             pulse[i].timer--;
         }
     }
-    
-    // Triangle channel (clocked every CPU cycle)
-    if (triangle.timer == 0) {
-        triangle.timer = triangle.timer_period;
-        if (triangle.length_counter > 0 && triangle.linear_counter > 0) {
-            triangle.sequence_pos = (triangle.sequence_pos + 1) & 0x1F;
-        }
-    } else {
-        triangle.timer--;
-    }
-    
+
     // Noise channel
     if (noise.timer == 0) {
         noise.timer = noise.timer_period;
@@ -128,6 +124,19 @@ void APU::clockTimers()
         noise.shift_register = (noise.shift_register >> 1) | (feedback << 14);
     } else {
         noise.timer--;
+    }
+}
+
+void APU::clockTriangleTimer()
+{
+    // Triangle channel (clocked every CPU cycle)
+    if (triangle.timer == 0) {
+        triangle.timer = triangle.timer_period;
+        if (triangle.length_counter > 0 && triangle.linear_counter > 0) {
+            triangle.sequence_pos = (triangle.sequence_pos + 1) & 0x1F;
+        }
+    } else {
+        triangle.timer--;
     }
 }
 
@@ -148,6 +157,32 @@ void APU::clockLengthCounters()
     // Noise
     if (!noise.length_halt && noise.length_counter > 0) {
         noise.length_counter--;
+    }
+}
+
+void APU::clockSweeps()
+{
+    for (int i = 0; i < 2; i++) {
+        Pulse& p = pulse[i];
+        if (p.sweep_counter == 0) {
+            if (p.sweep_enabled && p.sweep_shift > 0) {
+                u16 change = p.timer_period >> p.sweep_shift;
+                u16 target = p.sweep_negate
+                    ? (i == 0 ? (p.timer_period - change - 1) : (p.timer_period - change))
+                    : (p.timer_period + change);
+
+                if (p.timer_period >= 8 && target <= 0x7FF) {
+                    p.timer_period = target;
+                }
+            }
+            p.sweep_counter = p.sweep_period;
+            p.sweep_reload = false;
+        } else if (p.sweep_reload) {
+            p.sweep_counter = p.sweep_period;
+            p.sweep_reload = false;
+        } else {
+            p.sweep_counter--;
+        }
     }
 }
 
@@ -208,8 +243,11 @@ void APU::clockTriangleLinear()
 void APU::step()
 {
     cycles++;
-    
-    // Clock timers every other CPU cycle (APU runs at half CPU speed for pulse/noise)
+
+    // Triangle is clocked every CPU cycle
+    clockTriangleTimer();
+
+    // Clock pulse/noise timers every other CPU cycle (APU runs at half CPU speed for pulse/noise)
     if (cycles % 2 == 0) {
         clockTimers();
     }
@@ -229,6 +267,7 @@ void APU::step()
         }
         if (frame_counter == 7457 || frame_counter == 14915) {
             clockLengthCounters();
+            clockSweeps();
         }
         if (frame_counter >= 14915) {
             frame_counter = 0;
@@ -245,6 +284,7 @@ void APU::step()
         }
         if (frame_counter == 7457 || frame_counter == 18641) {
             clockLengthCounters();
+            clockSweeps();
         }
         if (frame_counter >= 18641) {
             frame_counter = 0;
@@ -292,7 +332,11 @@ void APU::writeRegister(u16 addr, u8 data)
             pulse[0].volume = data & 0x0F;
             break;
         case 0x4001:
-            // Sweep (not fully implemented)
+            pulse[0].sweep_enabled = data & 0x80;
+            pulse[0].sweep_period = (data >> 4) & 0x07;
+            pulse[0].sweep_negate = data & 0x08;
+            pulse[0].sweep_shift = data & 0x07;
+            pulse[0].sweep_reload = true;
             break;
         case 0x4002:
             pulse[0].timer_period = (pulse[0].timer_period & 0x700) | data;
@@ -303,6 +347,7 @@ void APU::writeRegister(u16 addr, u8 data)
                 pulse[0].length_counter = length_table[data >> 3];
             pulse[0].envelope_start = true;
             pulse[0].sequence_pos = 0;
+            pulse[0].sweep_reload = true;
             break;
 
         // Pulse 2
@@ -313,7 +358,11 @@ void APU::writeRegister(u16 addr, u8 data)
             pulse[1].volume = data & 0x0F;
             break;
         case 0x4005:
-            // Sweep (not fully implemented)
+            pulse[1].sweep_enabled = data & 0x80;
+            pulse[1].sweep_period = (data >> 4) & 0x07;
+            pulse[1].sweep_negate = data & 0x08;
+            pulse[1].sweep_shift = data & 0x07;
+            pulse[1].sweep_reload = true;
             break;
         case 0x4006:
             pulse[1].timer_period = (pulse[1].timer_period & 0x700) | data;
@@ -324,6 +373,7 @@ void APU::writeRegister(u16 addr, u8 data)
                 pulse[1].length_counter = length_table[data >> 3];
             pulse[1].envelope_start = true;
             pulse[1].sequence_pos = 0;
+            pulse[1].sweep_reload = true;
             break;
 
         // Triangle
@@ -404,17 +454,29 @@ float APU::getOutput() const
     // Pulse 1
     u8 pulse1_sample = 0;
     if (pulse[0].enabled && pulse[0].length_counter > 0 && pulse[0].timer_period >= 8) {
+        u16 change = pulse[0].sweep_shift ? (pulse[0].timer_period >> pulse[0].sweep_shift) : 0;
+        u16 target = pulse[0].sweep_negate
+            ? (pulse[0].timer_period - change - 1)
+            : (pulse[0].timer_period + change);
+        if (!pulse[0].sweep_enabled || pulse[0].sweep_shift == 0 || target <= 0x7FF) {
         u8 duty_out = duty_table[pulse[0].duty][pulse[0].sequence_pos];
         u8 vol = pulse[0].constant_volume ? pulse[0].volume : pulse[0].envelope_volume;
         pulse1_sample = duty_out ? vol : 0;
+        }
     }
     
     // Pulse 2
     u8 pulse2_sample = 0;
     if (pulse[1].enabled && pulse[1].length_counter > 0 && pulse[1].timer_period >= 8) {
+        u16 change = pulse[1].sweep_shift ? (pulse[1].timer_period >> pulse[1].sweep_shift) : 0;
+        u16 target = pulse[1].sweep_negate
+            ? (pulse[1].timer_period - change)
+            : (pulse[1].timer_period + change);
+        if (!pulse[1].sweep_enabled || pulse[1].sweep_shift == 0 || target <= 0x7FF) {
         u8 duty_out = duty_table[pulse[1].duty][pulse[1].sequence_pos];
         u8 vol = pulse[1].constant_volume ? pulse[1].volume : pulse[1].envelope_volume;
         pulse2_sample = duty_out ? vol : 0;
+        }
     }
     
     // Triangle
