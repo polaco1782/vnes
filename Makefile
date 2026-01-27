@@ -3,7 +3,7 @@
 
 CXX = g++
 CXXFLAGS = -std=c++11 -Wall -Wextra -Werror -Wunused-function -O0 -g
-LDFLAGS = -lsfml-graphics -lsfml-window -lsfml-system -lsfml-audio 
+LDFLAGS = -lsfml-graphics -lsfml-window -lsfml-system -lsfml-audio
 
 SRC_DIR = src
 BUILD_DIR = build
