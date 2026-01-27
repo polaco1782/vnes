@@ -1,5 +1,6 @@
 #include "apu.h"
 #include "sound.h"
+#include "bus.h"
 
 // Length counter lookup table
 static const u8 length_table[32] = {
@@ -10,6 +11,12 @@ static const u8 length_table[32] = {
 // Noise period lookup table (NTSC)
 static const u16 noise_period_table[16] = {
     4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
+};
+
+// DMC rate lookup table (NTSC)
+static const u16 dmc_rate_table[16] = {
+    428, 380, 340, 320, 286, 254, 226, 214,
+    190, 160, 142, 128, 106, 85, 72, 54
 };
 
 // Triangle sequence
@@ -80,17 +87,30 @@ APU::APU()
 
     // Initialize DMC
     dmc.irq_enable = false;
+    dmc.irq_flag = false;
     dmc.loop = false;
     dmc.rate = 0;
     dmc.output = 0;
     dmc.sample_addr = 0;
     dmc.sample_length = 0;
+    dmc.current_addr = 0;
+    dmc.bytes_remaining = 0;
+    dmc.timer = 0;
+    dmc.shift_register = 0;
+    dmc.bits_remaining = 0;
+    dmc.sample_buffer = 0;
+    dmc.sample_buffer_empty = true;
     dmc.enabled = false;
 }
 
 void APU::connect(Sound* snd)
 {
     sound = snd;
+}
+
+void APU::connectBus(Bus* bus_ptr)
+{
+    bus = bus_ptr;
 }
 
 void APU::reset()
@@ -240,12 +260,62 @@ void APU::clockTriangleLinear()
     }
 }
 
+void APU::clockDMC()
+{
+    // Fetch new sample byte when buffer empty
+    if (dmc.sample_buffer_empty && dmc.bytes_remaining > 0 && bus != nullptr) {
+        dmc.sample_buffer = bus->cpuRead(dmc.current_addr);
+        dmc.sample_buffer_empty = false;
+
+        dmc.current_addr = (dmc.current_addr == 0xFFFF) ? 0x8000 : (dmc.current_addr + 1);
+        dmc.bytes_remaining--;
+
+        if (dmc.bytes_remaining == 0) {
+            if (dmc.loop) {
+                dmc.current_addr = dmc.sample_addr;
+                dmc.bytes_remaining = dmc.sample_length;
+            } else if (dmc.irq_enable) {
+                dmc.irq_flag = true;
+            }
+        }
+    }
+
+    if (dmc.timer == 0) {
+        dmc.timer = dmc_rate_table[dmc.rate];
+
+        if (dmc.bits_remaining == 0) {
+            if (!dmc.sample_buffer_empty) {
+                dmc.shift_register = dmc.sample_buffer;
+                dmc.bits_remaining = 8;
+                dmc.sample_buffer_empty = true;
+            }
+        }
+
+        if (dmc.bits_remaining > 0) {
+            if (dmc.shift_register & 0x01) {
+                if (dmc.output <= 125) dmc.output += 2;
+            } else {
+                if (dmc.output >= 2) dmc.output -= 2;
+            }
+            dmc.shift_register >>= 1;
+            dmc.bits_remaining--;
+        }
+    } else {
+        dmc.timer--;
+    }
+}
+
 void APU::step()
 {
     cycles++;
 
     // Triangle is clocked every CPU cycle
     clockTriangleTimer();
+
+    // DMC runs every CPU cycle
+    if (dmc.enabled) {
+        clockDMC();
+    }
 
     // Clock pulse/noise timers every other CPU cycle (APU runs at half CPU speed for pulse/noise)
     if (cycles % 2 == 0) {
@@ -312,8 +382,9 @@ u8 APU::readRegister(u16 addr)
         if (pulse[1].length_counter > 0) data |= 0x02;
         if (triangle.length_counter > 0) data |= 0x04;
         if (noise.length_counter > 0)    data |= 0x08;
-        if (dmc.enabled)                 data |= 0x10;
+        if (dmc.bytes_remaining > 0)     data |= 0x10;
         if (irq_flag)                    data |= 0x40;
+        if (dmc.irq_flag)                data |= 0x80;
         
         irq_flag = false;  // Clear frame IRQ flag on read
     }
@@ -412,6 +483,7 @@ void APU::writeRegister(u16 addr, u8 data)
             dmc.irq_enable = data & 0x80;
             dmc.loop = data & 0x40;
             dmc.rate = data & 0x0F;
+            if (!dmc.irq_enable) dmc.irq_flag = false;
             break;
         case 0x4011:
             dmc.output = data & 0x7F;
@@ -435,6 +507,17 @@ void APU::writeRegister(u16 addr, u8 data)
             if (!pulse[1].enabled) pulse[1].length_counter = 0;
             if (!triangle.enabled) triangle.length_counter = 0;
             if (!noise.enabled) noise.length_counter = 0;
+            if (dmc.enabled) {
+                if (dmc.bytes_remaining == 0) {
+                    dmc.current_addr = dmc.sample_addr;
+                    dmc.bytes_remaining = dmc.sample_length;
+                }
+            } else {
+                dmc.bytes_remaining = 0;
+                dmc.sample_buffer_empty = true;
+                dmc.bits_remaining = 0;
+                dmc.irq_flag = false;
+            }
             break;
 
         // Frame counter
@@ -443,6 +526,12 @@ void APU::writeRegister(u16 addr, u8 data)
             irq_inhibit = data & 0x40;
             if (irq_inhibit) irq_flag = false;
             frame_counter = 0;
+            if (frame_counter_mode == 1) {
+                clockEnvelopes();
+                clockTriangleLinear();
+                clockLengthCounters();
+                clockSweeps();
+            }
             break;
     }
 }
@@ -459,9 +548,9 @@ float APU::getOutput() const
             ? (pulse[0].timer_period - change - 1)
             : (pulse[0].timer_period + change);
         if (!pulse[0].sweep_enabled || pulse[0].sweep_shift == 0 || target <= 0x7FF) {
-        u8 duty_out = duty_table[pulse[0].duty][pulse[0].sequence_pos];
-        u8 vol = pulse[0].constant_volume ? pulse[0].volume : pulse[0].envelope_volume;
-        pulse1_sample = duty_out ? vol : 0;
+            u8 duty_out = duty_table[pulse[0].duty][pulse[0].sequence_pos];
+            u8 vol = pulse[0].constant_volume ? pulse[0].volume : pulse[0].envelope_volume;
+            pulse1_sample = duty_out ? vol : 0;
         }
     }
     
@@ -473,9 +562,9 @@ float APU::getOutput() const
             ? (pulse[1].timer_period - change)
             : (pulse[1].timer_period + change);
         if (!pulse[1].sweep_enabled || pulse[1].sweep_shift == 0 || target <= 0x7FF) {
-        u8 duty_out = duty_table[pulse[1].duty][pulse[1].sequence_pos];
-        u8 vol = pulse[1].constant_volume ? pulse[1].volume : pulse[1].envelope_volume;
-        pulse2_sample = duty_out ? vol : 0;
+            u8 duty_out = duty_table[pulse[1].duty][pulse[1].sequence_pos];
+            u8 vol = pulse[1].constant_volume ? pulse[1].volume : pulse[1].envelope_volume;
+            pulse2_sample = duty_out ? vol : 0;
         }
     }
     

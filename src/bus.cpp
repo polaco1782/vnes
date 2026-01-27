@@ -11,6 +11,7 @@ Bus::Bus()
     // Connect components
     cpu.connect(this);
     ppu.connect(this, nullptr);
+    apu.connectBus(this);
 }
 
 std::string Bus::getRegionName(u16 addr) const

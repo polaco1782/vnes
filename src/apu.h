@@ -5,6 +5,7 @@
 #include <cstdint>
 
 class Sound;
+class Bus;
 
 class APU {
 public:
@@ -15,14 +16,15 @@ public:
     
     // Connect sound output
     void connect(Sound* snd);
+    void connectBus(Bus* bus_ptr);
 
     // CPU interface (registers $4000-$4017)
     u8 readRegister(u16 addr);
     void writeRegister(u16 addr, u8 data);
 
     // Frame counter IRQ
-    bool isIRQ() const { return irq_flag; }
-    void clearIRQ() { irq_flag = false; }
+    bool isIRQ() const { return irq_flag || dmc.irq_flag; }
+    void clearIRQ() { irq_flag = false; dmc.irq_flag = false; }
 
     // For debugger - channel status
     struct ChannelStatus {
@@ -61,6 +63,7 @@ private:
     void clockSweeps();
     void clockEnvelopes();
     void clockTriangleLinear();
+    void clockDMC();
     
     // Pulse duty cycle sequences
     static const u8 duty_table[4][8];
@@ -119,11 +122,19 @@ private:
     // DMC channel
     struct DMC {
         bool irq_enable;
+        bool irq_flag;
         bool loop;
-        u16 rate;
+        u8 rate;
         u8 output;
         u16 sample_addr;
         u16 sample_length;
+        u16 current_addr;
+        u16 bytes_remaining;
+        u16 timer;
+        u8 shift_register;
+        u8 bits_remaining;
+        u8 sample_buffer;
+        bool sample_buffer_empty;
         bool enabled;
     } dmc;
 
@@ -137,6 +148,7 @@ private:
     
     // Sample generation
     Sound* sound = nullptr;
+    Bus* bus = nullptr;
     float sample_accumulator = 0.0f;
     int samples_this_frame = 0;
     static constexpr float CPU_CLOCK_RATE = 1789773.0f;
