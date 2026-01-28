@@ -17,6 +17,82 @@
 #define COLOR_CYAN    "\033[36m"
 #define COLOR_BOLD    "\033[1m"
 
+// Hex formatting helpers
+static std::string hexByte(u8 val) {
+    std::ostringstream ss;
+    ss << std::hex << std::uppercase << std::setfill('0') << std::setw(2) << (int)val;
+    return ss.str();
+}
+
+static std::string hexWord(u16 val) {
+    std::ostringstream ss;
+    ss << std::hex << std::uppercase << std::setfill('0') << std::setw(4) << val;
+    return ss.str();
+}
+
+// Get memory region name for an address
+static std::string getMemoryRegion(u16 addr) {
+    if (addr < 0x2000) return "RAM";
+    if (addr < 0x4000) return "PPU";
+    if (addr < 0x4018) return "APU/IO";
+    if (addr < 0x6000) return "EXP";
+    if (addr < 0x8000) return "SRAM";
+    return "ROM";
+}
+
+// Map hardware addresses to symbolic names
+static std::string getHardwareSymbol(u16 addr) {
+    switch (addr) {
+        // PPU Registers
+        case 0x2000: return "PPU_CTRL";
+        case 0x2001: return "PPU_MASK";
+        case 0x2002: return "PPU_STATUS";
+        case 0x2003: return "OAM_ADDR";
+        case 0x2004: return "OAM_DATA";
+        case 0x2005: return "PPU_SCROLL";
+        case 0x2006: return "PPU_ADDR";
+        case 0x2007: return "PPU_DATA";
+        
+        // APU Pulse 1
+        case 0x4000: return "APU_PULSE1_CTRL";
+        case 0x4001: return "APU_PULSE1_SWEEP";
+        case 0x4002: return "APU_PULSE1_TIMER_LO";
+        case 0x4003: return "APU_PULSE1_TIMER_HI";
+        
+        // APU Pulse 2
+        case 0x4004: return "APU_PULSE2_CTRL";
+        case 0x4005: return "APU_PULSE2_SWEEP";
+        case 0x4006: return "APU_PULSE2_TIMER_LO";
+        case 0x4007: return "APU_PULSE2_TIMER_HI";
+        
+        // APU Triangle
+        case 0x4008: return "APU_TRIANGLE_CTRL";
+        case 0x400A: return "APU_TRIANGLE_TIMER_LO";
+        case 0x400B: return "APU_TRIANGLE_TIMER_HI";
+        
+        // APU Noise
+        case 0x400C: return "APU_NOISE_CTRL";
+        case 0x400E: return "APU_NOISE_PERIOD";
+        case 0x400F: return "APU_NOISE_LENGTH";
+        
+        // APU DMC
+        case 0x4010: return "APU_DMC_CTRL";
+        case 0x4011: return "APU_DMC_OUTPUT";
+        case 0x4012: return "APU_DMC_ADDR";
+        case 0x4013: return "APU_DMC_LENGTH";
+        
+        // Other I/O
+        case 0x4014: return "OAM_DMA";
+        case 0x4015: return "APU_STATUS";
+        case 0x4016: return "JOY1";
+        case 0x4017: return "JOY2_FRAME_COUNTER";
+        
+        default:
+            // Return empty string for non-hardware addresses
+            return "";
+    }
+}
+
 // Opcode names for disassembly
 static const char* opcode_names[256] = {
     "BRK","ORA","???","???","???","ORA","ASL","???","PHP","ORA","ASL","???","???","ORA","ASL","???",
@@ -138,260 +214,287 @@ void Debugger::printRegisters()
     std::cout << COLOR_RESET << std::dec << std::endl;
 }
 
-std::string Debugger::generatePseudoC(u8 opcode, int mode, u8 lo, u8 hi, u16 addr)
+// Helper template to format operand based on addressing mode
+template<typename Func>
+std::string formatOperand(AddrMode mode, u8 lo, u16 abs_addr, Func formatter) {
+    std::string symbol;
+    
+    switch (mode) {
+        case IMM:
+            return formatter("0x" + hexByte(lo));
+        
+        case ZP:
+            return formatter("[0x" + hexByte(lo) + "]");
+        
+        case ZPX:
+            return formatter("[0x" + hexByte(lo) + " + X]");
+        
+        case ZPY:
+            return formatter("[0x" + hexByte(lo) + " + Y]");
+        
+        case ABS:
+            symbol = getHardwareSymbol(abs_addr);
+            if (!symbol.empty()) {
+                return formatter("[" + symbol + "]");
+            }
+            return formatter("[0x" + hexWord(abs_addr) + "]");
+        
+        case ABX:
+            symbol = getHardwareSymbol(abs_addr);
+            if (!symbol.empty()) {
+                return formatter("[" + symbol + " + X]");
+            }
+            return formatter("[0x" + hexWord(abs_addr) + " + X]");
+        
+        case ABY:
+            symbol = getHardwareSymbol(abs_addr);
+            if (!symbol.empty()) {
+                return formatter("[" + symbol + " + Y]");
+            }
+            return formatter("[0x" + hexWord(abs_addr) + " + Y]");
+        
+        case IZX:
+            return formatter("[[0x" + hexByte(lo) + " + X]]");
+        
+        case IZY:
+            return formatter("[[0x" + hexByte(lo) + "] + Y]");
+        
+        default:
+            return "";
+    }
+}
+
+std::string Debugger::generatePseudoC(u8 opcode, int mode_int, u8 lo, u8 hi, u16 addr)
 {
     std::ostringstream ss;
-    const char* name = opcode_names[opcode];
+    AddrMode mode = static_cast<AddrMode>(mode_int);
     u16 abs_addr = (hi << 8) | lo;
     
-    // Load instructions
-    if (strcmp(name, "LDA") == 0) {
-        if (mode == IMM) ss << "A = 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo;
-        else if (mode == ZP) ss << "A = [0x" << std::hex << std::setw(2) << (int)lo << "]";
-        else if (mode == ZPX) ss << "A = [0x" << std::hex << std::setw(2) << (int)lo << " + X]";
-        else if (mode == ABS) ss << "A = [0x" << std::hex << std::setw(4) << abs_addr << "]";
-        else if (mode == ABX) ss << "A = [0x" << std::hex << std::setw(4) << abs_addr << " + X]";
-        else if (mode == ABY) ss << "A = [0x" << std::hex << std::setw(4) << abs_addr << " + Y]";
-        else if (mode == IZX) ss << "A = [[0x" << std::hex << std::setw(2) << (int)lo << " + X]]";
-        else if (mode == IZY) ss << "A = [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y]";
-    }
-    else if (strcmp(name, "LDX") == 0) {
-        if (mode == IMM) ss << "X = 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo;
-        else if (mode == ZP) ss << "X = [0x" << std::hex << std::setw(2) << (int)lo << "]";
-        else if (mode == ZPY) ss << "X = [0x" << std::hex << std::setw(2) << (int)lo << " + Y]";
-        else if (mode == ABS) ss << "X = [0x" << std::hex << std::setw(4) << abs_addr << "]";
-        else if (mode == ABY) ss << "X = [0x" << std::hex << std::setw(4) << abs_addr << " + Y]";
-    }
-    else if (strcmp(name, "LDY") == 0) {
-        if (mode == IMM) ss << "Y = 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo;
-        else if (mode == ZP) ss << "Y = [0x" << std::hex << std::setw(2) << (int)lo << "]";
-        else if (mode == ZPX) ss << "Y = [0x" << std::hex << std::setw(2) << (int)lo << " + X]";
-        else if (mode == ABS) ss << "Y = [0x" << std::hex << std::setw(4) << abs_addr << "]";
-        else if (mode == ABX) ss << "Y = [0x" << std::hex << std::setw(4) << abs_addr << " + X]";
-    }
-    // Store instructions
-    else if (strcmp(name, "STA") == 0) {
-        if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] = A";
-        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X] = A";
-        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] = A";
-        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X] = A";
-        else if (mode == ABY) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + Y] = A";
-        else if (mode == IZX) ss << "[[0x" << std::hex << std::setw(2) << (int)lo << " + X]] = A";
-        else if (mode == IZY) ss << "[[0x" << std::hex << std::setw(2) << (int)lo << "] + Y] = A";
-    }
-    else if (strcmp(name, "STX") == 0) {
-        if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] = X";
-        else if (mode == ZPY) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + Y] = X";
-        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] = X";
-    }
-    else if (strcmp(name, "STY") == 0) {
-        if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] = Y";
-        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X] = Y";
-        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] = Y";
-    }
-    // Arithmetic
-    else if (strcmp(name, "ADC") == 0) {
-        if (mode == IMM) ss << "A += 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << " + C";
-        else if (mode == ZP) ss << "A += [0x" << std::hex << std::setw(2) << (int)lo << "] + C";
-        else if (mode == ZPX) ss << "A += [0x" << std::hex << std::setw(2) << (int)lo << " + X] + C";
-        else if (mode == ABS) ss << "A += [0x" << std::hex << std::setw(4) << abs_addr << "] + C";
-        else if (mode == ABX) ss << "A += [0x" << std::hex << std::setw(4) << abs_addr << " + X] + C";
-        else if (mode == ABY) ss << "A += [0x" << std::hex << std::setw(4) << abs_addr << " + Y] + C";
-        else if (mode == IZX) ss << "A += [[0x" << std::hex << std::setw(2) << (int)lo << " + X]] + C";
-        else if (mode == IZY) ss << "A += [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y] + C";
-    }
-    else if (strcmp(name, "SBC") == 0) {
-        if (mode == IMM) ss << "A -= 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << " - !C";
-        else if (mode == ZP) ss << "A -= [0x" << std::hex << std::setw(2) << (int)lo << "] - !C";
-        else if (mode == ZPX) ss << "A -= [0x" << std::hex << std::setw(2) << (int)lo << " + X] - !C";
-        else if (mode == ABS) ss << "A -= [0x" << std::hex << std::setw(4) << abs_addr << "] - !C";
-        else if (mode == ABX) ss << "A -= [0x" << std::hex << std::setw(4) << abs_addr << " + X] - !C";
-        else if (mode == ABY) ss << "A -= [0x" << std::hex << std::setw(4) << abs_addr << " + Y] - !C";
-        else if (mode == IZX) ss << "A -= [[0x" << std::hex << std::setw(2) << (int)lo << " + X]] - !C";
-        else if (mode == IZY) ss << "A -= [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y] - !C";
-    }
-    // Logical operations
-    else if (strcmp(name, "AND") == 0) {
-        if (mode == IMM) ss << "A &= 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo;
-        else if (mode == ZP) ss << "A &= [0x" << std::hex << std::setw(2) << (int)lo << "]";
-        else if (mode == ZPX) ss << "A &= [0x" << std::hex << std::setw(2) << (int)lo << " + X]";
-        else if (mode == ABS) ss << "A &= [0x" << std::hex << std::setw(4) << abs_addr << "]";
-        else if (mode == ABX) ss << "A &= [0x" << std::hex << std::setw(4) << abs_addr << " + X]";
-        else if (mode == ABY) ss << "A &= [0x" << std::hex << std::setw(4) << abs_addr << " + Y]";
-        else if (mode == IZX) ss << "A &= [[0x" << std::hex << std::setw(2) << (int)lo << " + X]]";
-        else if (mode == IZY) ss << "A &= [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y]";
-    }
-    else if (strcmp(name, "ORA") == 0) {
-        if (mode == IMM) ss << "A |= 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo;
-        else if (mode == ZP) ss << "A |= [0x" << std::hex << std::setw(2) << (int)lo << "]";
-        else if (mode == ZPX) ss << "A |= [0x" << std::hex << std::setw(2) << (int)lo << " + X]";
-        else if (mode == ABS) ss << "A |= [0x" << std::hex << std::setw(4) << abs_addr << "]";
-        else if (mode == ABX) ss << "A |= [0x" << std::hex << std::setw(4) << abs_addr << " + X]";
-        else if (mode == ABY) ss << "A |= [0x" << std::hex << std::setw(4) << abs_addr << " + Y]";
-        else if (mode == IZX) ss << "A |= [[0x" << std::hex << std::setw(2) << (int)lo << " + X]]";
-        else if (mode == IZY) ss << "A |= [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y]";
-    }
-    else if (strcmp(name, "EOR") == 0) {
-        if (mode == IMM) ss << "A ^= 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo;
-        else if (mode == ZP) ss << "A ^= [0x" << std::hex << std::setw(2) << (int)lo << "]";
-        else if (mode == ZPX) ss << "A ^= [0x" << std::hex << std::setw(2) << (int)lo << " + X]";
-        else if (mode == ABS) ss << "A ^= [0x" << std::hex << std::setw(4) << abs_addr << "]";
-        else if (mode == ABX) ss << "A ^= [0x" << std::hex << std::setw(4) << abs_addr << " + X]";
-        else if (mode == ABY) ss << "A ^= [0x" << std::hex << std::setw(4) << abs_addr << " + Y]";
-        else if (mode == IZX) ss << "A ^= [[0x" << std::hex << std::setw(2) << (int)lo << " + X]]";
-        else if (mode == IZY) ss << "A ^= [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y]";
-    }
-    // Comparisons
-    else if (strcmp(name, "CMP") == 0) {
-        if (mode == IMM) ss << "compare(A, 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << ")";
-        else if (mode == ZP) ss << "compare(A, [0x" << std::hex << std::setw(2) << (int)lo << "])";
-        else if (mode == ZPX) ss << "compare(A, [0x" << std::hex << std::setw(2) << (int)lo << " + X])";
-        else if (mode == ABS) ss << "compare(A, [0x" << std::hex << std::setw(4) << abs_addr << "])";
-        else if (mode == ABX) ss << "compare(A, [0x" << std::hex << std::setw(4) << abs_addr << " + X])";
-        else if (mode == ABY) ss << "compare(A, [0x" << std::hex << std::setw(4) << abs_addr << " + Y])";
-        else if (mode == IZX) ss << "compare(A, [[0x" << std::hex << std::setw(2) << (int)lo << " + X]])";
-        else if (mode == IZY) ss << "compare(A, [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y])";
-    }
-    else if (strcmp(name, "CPX") == 0) {
-        if (mode == IMM) ss << "compare(X, 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << ")";
-        else if (mode == ZP) ss << "compare(X, [0x" << std::hex << std::setw(2) << (int)lo << "])";
-        else if (mode == ABS) ss << "compare(X, [0x" << std::hex << std::setw(4) << abs_addr << "])";
-    }
-    else if (strcmp(name, "CPY") == 0) {
-        if (mode == IMM) ss << "compare(Y, 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << ")";
-        else if (mode == ZP) ss << "compare(Y, [0x" << std::hex << std::setw(2) << (int)lo << "])";
-        else if (mode == ABS) ss << "compare(Y, [0x" << std::hex << std::setw(4) << abs_addr << "])";
-    }
-    // Branches
-    else if (strcmp(name, "BEQ") == 0) {
-        s8 offset = (s8)lo;
-        u16 target = addr + 2 + offset;
-        ss << "if (Z) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
-    }
-    else if (strcmp(name, "BNE") == 0) {
-        s8 offset = (s8)lo;
-        u16 target = addr + 2 + offset;
-        ss << "if (!Z) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
-    }
-    else if (strcmp(name, "BCS") == 0) {
-        s8 offset = (s8)lo;
-        u16 target = addr + 2 + offset;
-        ss << "if (C) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
-    }
-    else if (strcmp(name, "BCC") == 0) {
-        s8 offset = (s8)lo;
-        u16 target = addr + 2 + offset;
-        ss << "if (!C) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
-    }
-    else if (strcmp(name, "BMI") == 0) {
-        s8 offset = (s8)lo;
-        u16 target = addr + 2 + offset;
-        ss << "if (N) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
-    }
-    else if (strcmp(name, "BPL") == 0) {
-        s8 offset = (s8)lo;
-        u16 target = addr + 2 + offset;
-        ss << "if (!N) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
-    }
-    else if (strcmp(name, "BVS") == 0) {
-        s8 offset = (s8)lo;
-        u16 target = addr + 2 + offset;
-        ss << "if (V) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
-    }
-    else if (strcmp(name, "BVC") == 0) {
-        s8 offset = (s8)lo;
-        u16 target = addr + 2 + offset;
-        ss << "if (!V) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
-    }
-    // Jumps and calls
-    else if (strcmp(name, "JMP") == 0) {
-        if (mode == ABS) ss << "goto 0x" << std::hex << std::setw(4) << std::setfill('0') << abs_addr;
-        else if (mode == IND) ss << "goto [0x" << std::hex << std::setw(4) << abs_addr << "]";
-    }
-    else if (strcmp(name, "JSR") == 0) {
-        ss << "call(0x" << std::hex << std::setw(4) << std::setfill('0') << abs_addr << ")";
-    }
-    else if (strcmp(name, "RTS") == 0) {
-        ss << "return";
-    }
-    else if (strcmp(name, "RTI") == 0) {
-        ss << "return_from_interrupt()";
-    }
-    // Stack operations
-    else if (strcmp(name, "PHA") == 0) ss << "push(A)";
-    else if (strcmp(name, "PHP") == 0) ss << "push(P)";
-    else if (strcmp(name, "PLA") == 0) ss << "A = pop()";
-    else if (strcmp(name, "PLP") == 0) ss << "P = pop()";
-    // Transfers
-    else if (strcmp(name, "TAX") == 0) ss << "X = A";
-    else if (strcmp(name, "TAY") == 0) ss << "Y = A";
-    else if (strcmp(name, "TXA") == 0) ss << "A = X";
-    else if (strcmp(name, "TYA") == 0) ss << "A = Y";
-    else if (strcmp(name, "TSX") == 0) ss << "X = SP";
-    else if (strcmp(name, "TXS") == 0) ss << "SP = X";
-    // Increment/Decrement
-    else if (strcmp(name, "INC") == 0) {
-        if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "]++";
-        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X]++";
-        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "]++";
-        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X]++";
-    }
-    else if (strcmp(name, "DEC") == 0) {
-        if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "]--";
-        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X]--";
-        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "]--";
-        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X]--";
-    }
-    else if (strcmp(name, "INX") == 0) ss << "X++";
-    else if (strcmp(name, "INY") == 0) ss << "Y++";
-    else if (strcmp(name, "DEX") == 0) ss << "X--";
-    else if (strcmp(name, "DEY") == 0) ss << "Y--";
-    // Shifts and rotates
-    else if (strcmp(name, "ASL") == 0) {
-        if (mode == ACC) ss << "A <<= 1";
-        else if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] <<= 1";
-        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X] <<= 1";
-        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] <<= 1";
-        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X] <<= 1";
-    }
-    else if (strcmp(name, "LSR") == 0) {
-        if (mode == ACC) ss << "A >>= 1";
-        else if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] >>= 1";
-        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X] >>= 1";
-        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] >>= 1";
-        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X] >>= 1";
-    }
-    else if (strcmp(name, "ROL") == 0) {
-        if (mode == ACC) ss << "A = (A << 1) | C";
-        else if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] = rol([...])";
-        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X] = rol([...])";
-        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] = rol([...])";
-        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X] = rol([...])";
-    }
-    else if (strcmp(name, "ROR") == 0) {
-        if (mode == ACC) ss << "A = (A >> 1) | (C << 7)";
-        else if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] = ror([...])";
-        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X] = ror([...])";
-        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] = ror([...])";
-        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X] = ror([...])";
-    }
-    // Flag operations
-    else if (strcmp(name, "CLC") == 0) ss << "C = 0";
-    else if (strcmp(name, "SEC") == 0) ss << "C = 1";
-    else if (strcmp(name, "CLI") == 0) ss << "I = 0";
-    else if (strcmp(name, "SEI") == 0) ss << "I = 1";
-    else if (strcmp(name, "CLV") == 0) ss << "V = 0";
-    else if (strcmp(name, "CLD") == 0) ss << "D = 0";
-    else if (strcmp(name, "SED") == 0) ss << "D = 1";
-    // Special
-    else if (strcmp(name, "BIT") == 0) {
-        if (mode == ZP) ss << "test(A, [0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "])";
-        else if (mode == ABS) ss << "test(A, [0x" << std::hex << std::setw(4) << abs_addr << "])";
-    }
-    else if (strcmp(name, "NOP") == 0) ss << "/* no-op */";
-    else if (strcmp(name, "BRK") == 0) ss << "break()";
+    // Helper to format simple instructions with alignment and description
+    auto simpleInstr = [](const std::string& code, const std::string& desc) {
+        std::ostringstream result;
+        result << std::left << std::setw(30) << std::setfill(' ') << code;
+        result << " -- " << desc;
+        return result.str();
+    };
     
-    return ss.str();
+    // Helper to get addressing mode description
+    auto getAddrModeDesc = [&](const std::string& action) -> std::string {
+        switch (mode) {
+            case IMM: return action + " immediate";
+            case ABS: return action + " " + getMemoryRegion(abs_addr) + " (absolute)";
+            case ABX: return action + " " + getMemoryRegion(abs_addr) + " (absolute,X)";
+            case ABY: return action + " " + getMemoryRegion(abs_addr) + " (absolute,Y)";
+            case ZP:  return action + " RAM (zero page)";
+            case ZPX: return action + " RAM (zero page,X)";
+            case ZPY: return action + " RAM (zero page,Y)";
+            case IZX: return action + " " + getMemoryRegion(abs_addr) + " (indexed indirect)";
+            case IZY: return action + " " + getMemoryRegion(abs_addr) + " (indirect indexed)";
+            default:  return "";
+        }
+    };
+    
+    // Lambda helpers for common patterns
+    auto loadInstr = [&](const char* reg) {
+        return formatOperand(mode, lo, abs_addr, [&](const std::string& operand) {
+            std::string base = std::string(reg) + " = " + operand;
+            std::ostringstream result;
+            result << std::left << std::setw(30) << std::setfill(' ') << base;
+            result << " -- " << (mode == IMM ? "immediate load into " + std::string(reg) : getAddrModeDesc("load from"));
+            return result.str();
+        });
+    };
+    
+    auto storeInstr = [&](const char* reg) {
+        return formatOperand(mode, lo, abs_addr, [&](const std::string& operand) {
+            std::string base = operand + " = " + reg;
+            std::ostringstream result;
+            result << std::left << std::setw(30) << std::setfill(' ') << base;
+            result << " -- " << getAddrModeDesc("store to");
+            return result.str();
+        });
+    };
+    
+    auto aluInstr = [&](const char* op, const std::string& suffix = "") {
+        return formatOperand(mode, lo, abs_addr, [&](const std::string& operand) {
+            std::string base = std::string("A ") + op + " " + operand + suffix;
+            std::ostringstream result;
+            result << std::left << std::setw(30) << std::setfill(' ') << base;
+            result << " -- " << (mode == IMM ? "immediate load" : getAddrModeDesc("read from"));
+            return result.str();
+        });
+    };
+    
+    auto cmpInstr = [&](const char* reg) {
+        return formatOperand(mode, lo, abs_addr, [&](const std::string& operand) {
+            std::string base = std::string("compare(") + reg + ", " + operand + ")";
+            std::ostringstream result;
+            result << std::left << std::setw(30) << std::setfill(' ') << base;
+            result << " -- " << (mode == IMM ? "immediate load and compare with " + std::string(reg) : getAddrModeDesc("read from"));
+            return result.str();
+        });
+    };
+    
+    auto memModInstr = [&](const char* op, const char* desc = nullptr) {
+        if (mode == ACC) return desc ? simpleInstr(std::string("A ") + op, desc) : std::string("A ") + op;
+        return formatOperand(mode, lo, abs_addr, [&](const std::string& operand) {
+            std::string base = operand + " " + op;
+            std::ostringstream result;
+            result << std::left << std::setw(30) << std::setfill(' ') << base;
+            result << " -- " << (desc ? std::string(desc) + ", " : "modify ");
+            if (!desc) result << getMemoryRegion(abs_addr) << " ";
+            result << "(";
+            switch (mode) {
+                case ABS: result << "absolute"; break;
+                case ABX: result << "absolute,X"; break;
+                case ABY: result << "absolute,Y"; break;
+                case ZP:  result << "zero page"; break;
+                case ZPX: result << "zero page,X"; break;
+                case ZPY: result << "zero page,Y"; break;
+                default: break;
+            }
+            result << ")";
+            return result.str();
+        });
+    };
+    
+    auto branchInstr = [&](const char* cond) {
+        s8 offset = (s8)lo;
+        u16 target = addr + 2 + offset;
+        std::ostringstream base;
+        base << "if (" << cond << ") goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
+        return simpleInstr(base.str(), "branch (relative, offset=" + std::to_string((int)offset) + ")");
+    };
+    
+    // Switch on opcode byte directly instead of string comparison
+    switch (opcode) {
+        // Load instructions
+        case 0xA9: case 0xA5: case 0xB5: case 0xAD: case 0xBD: case 0xB9: case 0xA1: case 0xB1:
+            return loadInstr("A");
+        case 0xA2: case 0xA6: case 0xB6: case 0xAE: case 0xBE:
+            return loadInstr("X");
+        case 0xA0: case 0xA4: case 0xB4: case 0xAC: case 0xBC:
+            return loadInstr("Y");
+        
+        // Store instructions
+        case 0x85: case 0x95: case 0x8D: case 0x9D: case 0x99: case 0x81: case 0x91:
+            return storeInstr("A");
+        case 0x86: case 0x96: case 0x8E:
+            return storeInstr("X");
+        case 0x84: case 0x94: case 0x8C:
+            return storeInstr("Y");
+        
+        // ALU operations
+        case 0x69: case 0x65: case 0x75: case 0x6D: case 0x7D: case 0x79: case 0x61: case 0x71:
+            return aluInstr("+=", " + C");
+        case 0xE9: case 0xE5: case 0xF5: case 0xED: case 0xFD: case 0xF9: case 0xE1: case 0xF1:
+            return aluInstr("-=", " - !C");
+        case 0x29: case 0x25: case 0x35: case 0x2D: case 0x3D: case 0x39: case 0x21: case 0x31:
+            return aluInstr("&=");
+        case 0x09: case 0x05: case 0x15: case 0x0D: case 0x1D: case 0x19: case 0x01: case 0x11:
+            return aluInstr("|=");
+        case 0x49: case 0x45: case 0x55: case 0x4D: case 0x5D: case 0x59: case 0x41: case 0x51:
+            return aluInstr("^=");
+        
+        // Compare instructions
+        case 0xC9: case 0xC5: case 0xD5: case 0xCD: case 0xDD: case 0xD9: case 0xC1: case 0xD1:
+            return cmpInstr("A");
+        case 0xE0: case 0xE4: case 0xEC:
+            return cmpInstr("X");
+        case 0xC0: case 0xC4: case 0xCC:
+            return cmpInstr("Y");
+        
+        // Branch instructions
+        case 0xF0: return branchInstr("Z");
+        case 0xD0: return branchInstr("!Z");
+        case 0xB0: return branchInstr("C");
+        case 0x90: return branchInstr("!C");
+        case 0x30: return branchInstr("N");
+        case 0x10: return branchInstr("!N");
+        case 0x70: return branchInstr("V");
+        case 0x50: return branchInstr("!V");
+        
+        // Jump instructions
+        case 0x4C: {
+            std::ostringstream base;
+            base << "goto 0x" << std::hex << std::setw(4) << std::setfill('0') << abs_addr;
+            return simpleInstr(base.str(), "absolute jump");
+        }
+        case 0x6C: {
+            std::ostringstream base;
+            base << "goto [0x" << std::hex << std::setw(4) << std::setfill('0') << abs_addr << "]";
+            return simpleInstr(base.str(), "indirect jump");
+        }
+        case 0x20: {
+            std::ostringstream base;
+            base << "call(0x" << std::hex << std::setw(4) << std::setfill('0') << abs_addr << ")";
+            return simpleInstr(base.str(), "jump to subroutine");
+        }
+        
+        // Return instructions
+        case 0x60: return simpleInstr("return", "return from subroutine");
+        case 0x40: return simpleInstr("return_from_interrupt()", "return from interrupt");
+        
+        // Stack operations
+        case 0x48: return simpleInstr("push(A)", "push accumulator to stack");
+        case 0x08: return simpleInstr("push(P)", "push status flags to stack");
+        case 0x68: return simpleInstr("A = pop()", "pop accumulator from stack");
+        case 0x28: return simpleInstr("P = pop()", "pop status flags from stack");
+        
+        // Transfer instructions
+        case 0xAA: return simpleInstr("X = A", "transfer A to X");
+        case 0xA8: return simpleInstr("Y = A", "transfer A to Y");
+        case 0x8A: return simpleInstr("A = X", "transfer X to A");
+        case 0x98: return simpleInstr("A = Y", "transfer Y to A");
+        case 0xBA: return simpleInstr("X = SP", "transfer SP to X");
+        case 0x9A: return simpleInstr("SP = X", "transfer X to SP");
+        
+        // Increment/Decrement memory
+        case 0xE6: case 0xF6: case 0xEE: case 0xFE:
+            return memModInstr("++", "increment memory");
+        case 0xC6: case 0xD6: case 0xCE: case 0xDE:
+            return memModInstr("--", "decrement memory");
+        
+        // Increment/Decrement registers
+        case 0xE8: return simpleInstr("X++", "increment X register");
+        case 0xC8: return simpleInstr("Y++", "increment Y register");
+        case 0xCA: return simpleInstr("X--", "decrement X register");
+        case 0x88: return simpleInstr("Y--", "decrement Y register");
+        
+        // Shift and rotate instructions
+        case 0x0A: case 0x06: case 0x16: case 0x0E: case 0x1E:
+            return memModInstr("<<= 1", "arithmetic shift left");
+        case 0x4A: case 0x46: case 0x56: case 0x4E: case 0x5E:
+            return memModInstr(">>= 1", "logical shift right");
+        case 0x2A: return simpleInstr("A = (A << 1) | C", "rotate left through carry");
+        case 0x26: case 0x36: case 0x2E: case 0x3E:
+            return memModInstr("= rol(...)", "rotate left through carry");
+        case 0x6A: return simpleInstr("A = (A >> 1) | (C << 7)", "rotate right through carry");
+        case 0x66: case 0x76: case 0x6E: case 0x7E:
+            return memModInstr("= ror(...)", "rotate right through carry");
+        
+        // Flag operations
+        case 0x18: return simpleInstr("C = 0", "clear carry flag");
+        case 0x38: return simpleInstr("C = 1", "set carry flag");
+        case 0x58: return simpleInstr("I = 0", "clear interrupt disable");
+        case 0x78: return simpleInstr("I = 1", "set interrupt disable");
+        case 0xB8: return simpleInstr("V = 0", "clear overflow flag");
+        case 0xD8: return simpleInstr("D = 0", "clear decimal mode");
+        case 0xF8: return simpleInstr("D = 1", "set decimal mode");
+        
+        // BIT test
+        case 0x24: case 0x2C:
+            return formatOperand(mode, lo, abs_addr, [&](const std::string& operand) {
+                return simpleInstr("test(A, " + operand + ")", "bit test (sets N,V,Z)");
+            });
+        
+        // Special instructions
+        case 0xEA: return simpleInstr("/* no-op */", "no operation");
+        case 0x00: return simpleInstr("break()", "software interrupt");
+        
+        default:
+            return "(invalid opcode)";
+    }
 }
 
 std::string Debugger::disassembleInstruction(u16 addr, int& length)
@@ -442,6 +545,7 @@ std::string Debugger::disassembleInstruction(u16 addr, int& length)
 
     // Format operand
     std::string operand;
+    u16 abs_addr = (hi << 8) | lo;
     switch (mode) {
         case IMP:
             break;
@@ -449,49 +553,49 @@ std::string Debugger::disassembleInstruction(u16 addr, int& length)
             operand = "A";
             break;
         case IMM:
-            operand = "#$" + (std::ostringstream() << std::hex << std::setw(2) << std::setfill('0') << (int)lo).str();
+            operand = "#$" + hexByte(lo);
             break;
         case ZP:
-            operand = "$" + (std::ostringstream() << std::hex << std::setw(2) << std::setfill('0') << (int)lo).str();
+            operand = "$" + hexByte(lo);
             break;
         case ZPX:
-            operand = "$" + (std::ostringstream() << std::hex << std::setw(2) << std::setfill('0') << (int)lo).str() + ",X";
+            operand = "$" + hexByte(lo) + ",X";
             break;
         case ZPY:
-            operand = "$" + (std::ostringstream() << std::hex << std::setw(2) << std::setfill('0') << (int)lo).str() + ",Y";
+            operand = "$" + hexByte(lo) + ",Y";
             break;
         case ABS:
-            operand = "$" + (std::ostringstream() << std::hex << std::setw(4) << std::setfill('0') << ((hi << 8) | lo)).str();
+            operand = "$" + hexWord(abs_addr);
             break;
         case ABX:
-            operand = "$" + (std::ostringstream() << std::hex << std::setw(4) << std::setfill('0') << ((hi << 8) | lo)).str() + ",X";
+            operand = "$" + hexWord(abs_addr) + ",X";
             break;
         case ABY:
-            operand = "$" + (std::ostringstream() << std::hex << std::setw(4) << std::setfill('0') << ((hi << 8) | lo)).str() + ",Y";
+            operand = "$" + hexWord(abs_addr) + ",Y";
             break;
         case IND:
-            operand = "($" + (std::ostringstream() << std::hex << std::setw(4) << std::setfill('0') << ((hi << 8) | lo)).str() + ")";
+            operand = "($" + hexWord(abs_addr) + ")";
             break;
         case IZX:
-            operand = "($" + (std::ostringstream() << std::hex << std::setw(2) << std::setfill('0') << (int)lo).str() + ",X)";
+            operand = "($" + hexByte(lo) + ",X)";
             break;
         case IZY:
-            operand = "($" + (std::ostringstream() << std::hex << std::setw(2) << std::setfill('0') << (int)lo).str() + "),Y";
+            operand = "($" + hexByte(lo) + "),Y";
             break;
         case REL: {
             s8 offset = (s8)lo;
             u16 target = addr + 2 + offset;
-            operand = "$" + (std::ostringstream() << std::hex << std::setw(4) << std::setfill('0') << target).str();
+            operand = "$" + hexWord(target);
             break;
         }
     }
     
-    ss << std::left << std::setw(15) << operand;
+    ss << std::left << std::setfill(' ') << std::setw(15) << operand;
     
     // Add pseudo-C code
     std::string pseudoC = generatePseudoC(opcode, mode, lo, hi, addr);
     if (!pseudoC.empty()) {
-        ss << "\t; " << pseudoC;
+        ss << " ; " << pseudoC;
     }
 
     return ss.str();
@@ -500,30 +604,29 @@ std::string Debugger::disassembleInstruction(u16 addr, int& length)
 void Debugger::cmdHelp()
 {
     std::cout << COLOR_BOLD << "\nVNES Debugger Commands:" << COLOR_RESET << std::endl;
-    std::cout << "  " << COLOR_CYAN << "s, step [n]" << COLOR_RESET << "      - Execute n instructions (default 1)" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "c, continue" << COLOR_RESET << "      - Run until breakpoint" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "r, regs" << COLOR_RESET << "          - Show CPU registers" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "d, dis [addr] [n]" << COLOR_RESET << " - Disassemble n instructions at addr" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "m, mem <addr> [n]" << COLOR_RESET << " - Show n bytes of memory at addr" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "read <addr> [n]" << COLOR_RESET << "   - Read n bytes from memory at addr" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "w, write <addr> <val>" << COLOR_RESET << " - Write byte to memory" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "b, break <addr>" << COLOR_RESET << "  - Set breakpoint at addr" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "del <addr>" << COLOR_RESET << "       - Delete breakpoint at addr" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "bl" << COLOR_RESET << "               - List all breakpoints" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "st, stack" << COLOR_RESET << "        - Show stack contents" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "reset" << COLOR_RESET << "            - Reset the CPU" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "s, step [n]" << COLOR_RESET << "           - Execute n instructions (default 1)" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "c, continue" << COLOR_RESET << "           - Run until breakpoint" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "r, regs" << COLOR_RESET << "               - Show CPU registers" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "d, dis [addr] [n]" << COLOR_RESET << "    - Disassemble n instructions at addr" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "mr, memread <addr> [n]" << COLOR_RESET << " - Read n bytes from memory at addr" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "mw, memwrite <addr> <val>" << COLOR_RESET << " - Write byte to memory" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "b, break <addr>" << COLOR_RESET << "       - Set breakpoint at addr" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "del <addr>" << COLOR_RESET << "            - Delete breakpoint at addr" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "bl" << COLOR_RESET << "                    - List all breakpoints" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "st, stack" << COLOR_RESET << "             - Show stack contents" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "reset" << COLOR_RESET << "                 - Reset the CPU" << std::endl;
 
     // register manipulation
     std::cout << std::endl;
     std::cout << COLOR_BOLD << "Register Manipulation:" << COLOR_RESET << std::endl;
-    std::cout << "  " << COLOR_CYAN << "set <reg> <val>" << COLOR_RESET << "  - Set CPU register (A,X,Y,SP,PC,P)" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "ppu" << COLOR_RESET << "              - Show PPU registers" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "ppu <reg> <val>" << COLOR_RESET << "  - Set PPU register" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "apu" << COLOR_RESET << "              - Show APU channel status" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "io" << COLOR_RESET << "               - Show I/O status" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "regset <reg> <val>" << COLOR_RESET << "   - Set CPU register (A,X,Y,SP,PC,P)" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "ppu" << COLOR_RESET << "                   - Show PPU registers" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "ppu <reg> <val>" << COLOR_RESET << "       - Set PPU register" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "apu" << COLOR_RESET << "                   - Show APU channel status" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "io" << COLOR_RESET << "                    - Show I/O status" << std::endl;
     std::cout << std::endl;
-    std::cout << "  " << COLOR_CYAN << "q, quit" << COLOR_RESET << "          - Exit debugger" << std::endl;
-    std::cout << "  " << COLOR_CYAN << "h, help" << COLOR_RESET << "          - Show this help" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "q, quit" << COLOR_RESET << "               - Exit debugger" << std::endl;
+    std::cout << "  " << COLOR_CYAN << "h, help" << COLOR_RESET << "               - Show this help" << std::endl;
     std::cout << std::endl;
 
     // memory regions
@@ -652,7 +755,7 @@ void Debugger::cmdMemory(u16 addr, int count)
     std::cout << std::hex << std::uppercase << std::setfill('0');
 
     std::cout << "Reading " << std::dec << count << std::hex << " byte(s) from $" 
-            << std::setw(4) << addr << ":" << std::endl;
+            << std::setw(4) << addr << " [" << getMemoryRegion(addr) << "]:" << std::endl;
 
     for (int i = 0; i < count; i += 16) {
         std::cout << COLOR_CYAN << std::setw(4) << (addr + i) << COLOR_RESET << ": ";
@@ -1060,7 +1163,7 @@ void Debugger::cmdWrite(u16 addr, u8 value)
 {
     bus->cpuWrite(addr, value);
     std::cout << "Wrote $" << std::hex << std::setw(2) << std::setfill('0') << (int)value
-              << " to $" << std::setw(4) << addr << std::dec << std::endl;
+              << " to $" << std::setw(4) << addr << " [" << getMemoryRegion(addr) << "]:" << std::dec << std::endl;
 }
 
 std::vector<std::string> Debugger::tokenize(const std::string& line)
@@ -1248,7 +1351,7 @@ void Debugger::run()
             }
             cmdDisassemble(addr, count);
         }
-        else if (cmd == "m" || cmd == "memread") {
+        else if (cmd == "mr" || cmd == "memread") {
             if (tokens.size() < 2) {
                 std::cout << "Usage: memread <addr> [count]" << std::endl;
             } else {
@@ -1261,6 +1364,19 @@ void Debugger::run()
                     cmdMemory(addr, count);
                 } else {
                     std::cout << "Invalid address" << std::endl;
+                }
+            }
+        }
+        else if (cmd == "mw" || cmd == "memwrite") {
+            if (tokens.size() < 3) {
+                std::cout << "Usage: memwrite <addr> <value>" << std::endl;
+            } else {
+                u16 addr;
+                u8 val;
+                if (parseAddress(tokens[1], addr) && parseValue8(tokens[2], val)) {
+                    cmdWrite(addr, val);
+                } else {
+                    std::cout << "Invalid address or value" << std::endl;
                 }
             }
         }
@@ -1297,9 +1413,9 @@ void Debugger::run()
         else if (cmd == "reset") {
             cmdReset();
         }
-        else if (cmd == "set") {
+        else if (cmd == "regset") {
             if (tokens.size() < 3) {
-                std::cout << "Usage: set <reg> <value>" << std::endl;
+                std::cout << "Usage: regset <reg> <value>" << std::endl;
                 std::cout << "Registers: A, X, Y, SP, PC, P" << std::endl;
             } else {
                 cmdSetCpu(tokens[1], tokens[2]);
@@ -1320,19 +1436,6 @@ void Debugger::run()
         }
         else if (cmd == "io") {
             cmdIo();
-        }
-        else if (cmd == "w" || cmd == "write") {
-            if (tokens.size() < 3) {
-                std::cout << "Usage: write <addr> <value>" << std::endl;
-            } else {
-                u16 addr;
-                u8 val;
-                if (parseAddress(tokens[1], addr) && parseValue8(tokens[2], val)) {
-                    cmdWrite(addr, val);
-                } else {
-                    std::cout << "Invalid address or value" << std::endl;
-                }
-            }
         }
         else if (cmd == "q" || cmd == "quit") {
             quit = true;
