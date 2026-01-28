@@ -138,6 +138,262 @@ void Debugger::printRegisters()
     std::cout << COLOR_RESET << std::dec << std::endl;
 }
 
+std::string Debugger::generatePseudoC(u8 opcode, int mode, u8 lo, u8 hi, u16 addr)
+{
+    std::ostringstream ss;
+    const char* name = opcode_names[opcode];
+    u16 abs_addr = (hi << 8) | lo;
+    
+    // Load instructions
+    if (strcmp(name, "LDA") == 0) {
+        if (mode == IMM) ss << "A = 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo;
+        else if (mode == ZP) ss << "A = [0x" << std::hex << std::setw(2) << (int)lo << "]";
+        else if (mode == ZPX) ss << "A = [0x" << std::hex << std::setw(2) << (int)lo << " + X]";
+        else if (mode == ABS) ss << "A = [0x" << std::hex << std::setw(4) << abs_addr << "]";
+        else if (mode == ABX) ss << "A = [0x" << std::hex << std::setw(4) << abs_addr << " + X]";
+        else if (mode == ABY) ss << "A = [0x" << std::hex << std::setw(4) << abs_addr << " + Y]";
+        else if (mode == IZX) ss << "A = [[0x" << std::hex << std::setw(2) << (int)lo << " + X]]";
+        else if (mode == IZY) ss << "A = [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y]";
+    }
+    else if (strcmp(name, "LDX") == 0) {
+        if (mode == IMM) ss << "X = 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo;
+        else if (mode == ZP) ss << "X = [0x" << std::hex << std::setw(2) << (int)lo << "]";
+        else if (mode == ZPY) ss << "X = [0x" << std::hex << std::setw(2) << (int)lo << " + Y]";
+        else if (mode == ABS) ss << "X = [0x" << std::hex << std::setw(4) << abs_addr << "]";
+        else if (mode == ABY) ss << "X = [0x" << std::hex << std::setw(4) << abs_addr << " + Y]";
+    }
+    else if (strcmp(name, "LDY") == 0) {
+        if (mode == IMM) ss << "Y = 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo;
+        else if (mode == ZP) ss << "Y = [0x" << std::hex << std::setw(2) << (int)lo << "]";
+        else if (mode == ZPX) ss << "Y = [0x" << std::hex << std::setw(2) << (int)lo << " + X]";
+        else if (mode == ABS) ss << "Y = [0x" << std::hex << std::setw(4) << abs_addr << "]";
+        else if (mode == ABX) ss << "Y = [0x" << std::hex << std::setw(4) << abs_addr << " + X]";
+    }
+    // Store instructions
+    else if (strcmp(name, "STA") == 0) {
+        if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] = A";
+        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X] = A";
+        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] = A";
+        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X] = A";
+        else if (mode == ABY) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + Y] = A";
+        else if (mode == IZX) ss << "[[0x" << std::hex << std::setw(2) << (int)lo << " + X]] = A";
+        else if (mode == IZY) ss << "[[0x" << std::hex << std::setw(2) << (int)lo << "] + Y] = A";
+    }
+    else if (strcmp(name, "STX") == 0) {
+        if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] = X";
+        else if (mode == ZPY) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + Y] = X";
+        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] = X";
+    }
+    else if (strcmp(name, "STY") == 0) {
+        if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] = Y";
+        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X] = Y";
+        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] = Y";
+    }
+    // Arithmetic
+    else if (strcmp(name, "ADC") == 0) {
+        if (mode == IMM) ss << "A += 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << " + C";
+        else if (mode == ZP) ss << "A += [0x" << std::hex << std::setw(2) << (int)lo << "] + C";
+        else if (mode == ZPX) ss << "A += [0x" << std::hex << std::setw(2) << (int)lo << " + X] + C";
+        else if (mode == ABS) ss << "A += [0x" << std::hex << std::setw(4) << abs_addr << "] + C";
+        else if (mode == ABX) ss << "A += [0x" << std::hex << std::setw(4) << abs_addr << " + X] + C";
+        else if (mode == ABY) ss << "A += [0x" << std::hex << std::setw(4) << abs_addr << " + Y] + C";
+        else if (mode == IZX) ss << "A += [[0x" << std::hex << std::setw(2) << (int)lo << " + X]] + C";
+        else if (mode == IZY) ss << "A += [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y] + C";
+    }
+    else if (strcmp(name, "SBC") == 0) {
+        if (mode == IMM) ss << "A -= 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << " - !C";
+        else if (mode == ZP) ss << "A -= [0x" << std::hex << std::setw(2) << (int)lo << "] - !C";
+        else if (mode == ZPX) ss << "A -= [0x" << std::hex << std::setw(2) << (int)lo << " + X] - !C";
+        else if (mode == ABS) ss << "A -= [0x" << std::hex << std::setw(4) << abs_addr << "] - !C";
+        else if (mode == ABX) ss << "A -= [0x" << std::hex << std::setw(4) << abs_addr << " + X] - !C";
+        else if (mode == ABY) ss << "A -= [0x" << std::hex << std::setw(4) << abs_addr << " + Y] - !C";
+        else if (mode == IZX) ss << "A -= [[0x" << std::hex << std::setw(2) << (int)lo << " + X]] - !C";
+        else if (mode == IZY) ss << "A -= [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y] - !C";
+    }
+    // Logical operations
+    else if (strcmp(name, "AND") == 0) {
+        if (mode == IMM) ss << "A &= 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo;
+        else if (mode == ZP) ss << "A &= [0x" << std::hex << std::setw(2) << (int)lo << "]";
+        else if (mode == ZPX) ss << "A &= [0x" << std::hex << std::setw(2) << (int)lo << " + X]";
+        else if (mode == ABS) ss << "A &= [0x" << std::hex << std::setw(4) << abs_addr << "]";
+        else if (mode == ABX) ss << "A &= [0x" << std::hex << std::setw(4) << abs_addr << " + X]";
+        else if (mode == ABY) ss << "A &= [0x" << std::hex << std::setw(4) << abs_addr << " + Y]";
+        else if (mode == IZX) ss << "A &= [[0x" << std::hex << std::setw(2) << (int)lo << " + X]]";
+        else if (mode == IZY) ss << "A &= [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y]";
+    }
+    else if (strcmp(name, "ORA") == 0) {
+        if (mode == IMM) ss << "A |= 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo;
+        else if (mode == ZP) ss << "A |= [0x" << std::hex << std::setw(2) << (int)lo << "]";
+        else if (mode == ZPX) ss << "A |= [0x" << std::hex << std::setw(2) << (int)lo << " + X]";
+        else if (mode == ABS) ss << "A |= [0x" << std::hex << std::setw(4) << abs_addr << "]";
+        else if (mode == ABX) ss << "A |= [0x" << std::hex << std::setw(4) << abs_addr << " + X]";
+        else if (mode == ABY) ss << "A |= [0x" << std::hex << std::setw(4) << abs_addr << " + Y]";
+        else if (mode == IZX) ss << "A |= [[0x" << std::hex << std::setw(2) << (int)lo << " + X]]";
+        else if (mode == IZY) ss << "A |= [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y]";
+    }
+    else if (strcmp(name, "EOR") == 0) {
+        if (mode == IMM) ss << "A ^= 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo;
+        else if (mode == ZP) ss << "A ^= [0x" << std::hex << std::setw(2) << (int)lo << "]";
+        else if (mode == ZPX) ss << "A ^= [0x" << std::hex << std::setw(2) << (int)lo << " + X]";
+        else if (mode == ABS) ss << "A ^= [0x" << std::hex << std::setw(4) << abs_addr << "]";
+        else if (mode == ABX) ss << "A ^= [0x" << std::hex << std::setw(4) << abs_addr << " + X]";
+        else if (mode == ABY) ss << "A ^= [0x" << std::hex << std::setw(4) << abs_addr << " + Y]";
+        else if (mode == IZX) ss << "A ^= [[0x" << std::hex << std::setw(2) << (int)lo << " + X]]";
+        else if (mode == IZY) ss << "A ^= [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y]";
+    }
+    // Comparisons
+    else if (strcmp(name, "CMP") == 0) {
+        if (mode == IMM) ss << "compare(A, 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << ")";
+        else if (mode == ZP) ss << "compare(A, [0x" << std::hex << std::setw(2) << (int)lo << "])";
+        else if (mode == ZPX) ss << "compare(A, [0x" << std::hex << std::setw(2) << (int)lo << " + X])";
+        else if (mode == ABS) ss << "compare(A, [0x" << std::hex << std::setw(4) << abs_addr << "])";
+        else if (mode == ABX) ss << "compare(A, [0x" << std::hex << std::setw(4) << abs_addr << " + X])";
+        else if (mode == ABY) ss << "compare(A, [0x" << std::hex << std::setw(4) << abs_addr << " + Y])";
+        else if (mode == IZX) ss << "compare(A, [[0x" << std::hex << std::setw(2) << (int)lo << " + X]])";
+        else if (mode == IZY) ss << "compare(A, [[0x" << std::hex << std::setw(2) << (int)lo << "] + Y])";
+    }
+    else if (strcmp(name, "CPX") == 0) {
+        if (mode == IMM) ss << "compare(X, 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << ")";
+        else if (mode == ZP) ss << "compare(X, [0x" << std::hex << std::setw(2) << (int)lo << "])";
+        else if (mode == ABS) ss << "compare(X, [0x" << std::hex << std::setw(4) << abs_addr << "])";
+    }
+    else if (strcmp(name, "CPY") == 0) {
+        if (mode == IMM) ss << "compare(Y, 0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << ")";
+        else if (mode == ZP) ss << "compare(Y, [0x" << std::hex << std::setw(2) << (int)lo << "])";
+        else if (mode == ABS) ss << "compare(Y, [0x" << std::hex << std::setw(4) << abs_addr << "])";
+    }
+    // Branches
+    else if (strcmp(name, "BEQ") == 0) {
+        s8 offset = (s8)lo;
+        u16 target = addr + 2 + offset;
+        ss << "if (Z) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
+    }
+    else if (strcmp(name, "BNE") == 0) {
+        s8 offset = (s8)lo;
+        u16 target = addr + 2 + offset;
+        ss << "if (!Z) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
+    }
+    else if (strcmp(name, "BCS") == 0) {
+        s8 offset = (s8)lo;
+        u16 target = addr + 2 + offset;
+        ss << "if (C) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
+    }
+    else if (strcmp(name, "BCC") == 0) {
+        s8 offset = (s8)lo;
+        u16 target = addr + 2 + offset;
+        ss << "if (!C) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
+    }
+    else if (strcmp(name, "BMI") == 0) {
+        s8 offset = (s8)lo;
+        u16 target = addr + 2 + offset;
+        ss << "if (N) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
+    }
+    else if (strcmp(name, "BPL") == 0) {
+        s8 offset = (s8)lo;
+        u16 target = addr + 2 + offset;
+        ss << "if (!N) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
+    }
+    else if (strcmp(name, "BVS") == 0) {
+        s8 offset = (s8)lo;
+        u16 target = addr + 2 + offset;
+        ss << "if (V) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
+    }
+    else if (strcmp(name, "BVC") == 0) {
+        s8 offset = (s8)lo;
+        u16 target = addr + 2 + offset;
+        ss << "if (!V) goto 0x" << std::hex << std::setw(4) << std::setfill('0') << target;
+    }
+    // Jumps and calls
+    else if (strcmp(name, "JMP") == 0) {
+        if (mode == ABS) ss << "goto 0x" << std::hex << std::setw(4) << std::setfill('0') << abs_addr;
+        else if (mode == IND) ss << "goto [0x" << std::hex << std::setw(4) << abs_addr << "]";
+    }
+    else if (strcmp(name, "JSR") == 0) {
+        ss << "call(0x" << std::hex << std::setw(4) << std::setfill('0') << abs_addr << ")";
+    }
+    else if (strcmp(name, "RTS") == 0) {
+        ss << "return";
+    }
+    else if (strcmp(name, "RTI") == 0) {
+        ss << "return_from_interrupt()";
+    }
+    // Stack operations
+    else if (strcmp(name, "PHA") == 0) ss << "push(A)";
+    else if (strcmp(name, "PHP") == 0) ss << "push(P)";
+    else if (strcmp(name, "PLA") == 0) ss << "A = pop()";
+    else if (strcmp(name, "PLP") == 0) ss << "P = pop()";
+    // Transfers
+    else if (strcmp(name, "TAX") == 0) ss << "X = A";
+    else if (strcmp(name, "TAY") == 0) ss << "Y = A";
+    else if (strcmp(name, "TXA") == 0) ss << "A = X";
+    else if (strcmp(name, "TYA") == 0) ss << "A = Y";
+    else if (strcmp(name, "TSX") == 0) ss << "X = SP";
+    else if (strcmp(name, "TXS") == 0) ss << "SP = X";
+    // Increment/Decrement
+    else if (strcmp(name, "INC") == 0) {
+        if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "]++";
+        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X]++";
+        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "]++";
+        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X]++";
+    }
+    else if (strcmp(name, "DEC") == 0) {
+        if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "]--";
+        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X]--";
+        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "]--";
+        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X]--";
+    }
+    else if (strcmp(name, "INX") == 0) ss << "X++";
+    else if (strcmp(name, "INY") == 0) ss << "Y++";
+    else if (strcmp(name, "DEX") == 0) ss << "X--";
+    else if (strcmp(name, "DEY") == 0) ss << "Y--";
+    // Shifts and rotates
+    else if (strcmp(name, "ASL") == 0) {
+        if (mode == ACC) ss << "A <<= 1";
+        else if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] <<= 1";
+        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X] <<= 1";
+        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] <<= 1";
+        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X] <<= 1";
+    }
+    else if (strcmp(name, "LSR") == 0) {
+        if (mode == ACC) ss << "A >>= 1";
+        else if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] >>= 1";
+        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X] >>= 1";
+        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] >>= 1";
+        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X] >>= 1";
+    }
+    else if (strcmp(name, "ROL") == 0) {
+        if (mode == ACC) ss << "A = (A << 1) | C";
+        else if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] = rol([...])";
+        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X] = rol([...])";
+        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] = rol([...])";
+        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X] = rol([...])";
+    }
+    else if (strcmp(name, "ROR") == 0) {
+        if (mode == ACC) ss << "A = (A >> 1) | (C << 7)";
+        else if (mode == ZP) ss << "[0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "] = ror([...])";
+        else if (mode == ZPX) ss << "[0x" << std::hex << std::setw(2) << (int)lo << " + X] = ror([...])";
+        else if (mode == ABS) ss << "[0x" << std::hex << std::setw(4) << abs_addr << "] = ror([...])";
+        else if (mode == ABX) ss << "[0x" << std::hex << std::setw(4) << abs_addr << " + X] = ror([...])";
+    }
+    // Flag operations
+    else if (strcmp(name, "CLC") == 0) ss << "C = 0";
+    else if (strcmp(name, "SEC") == 0) ss << "C = 1";
+    else if (strcmp(name, "CLI") == 0) ss << "I = 0";
+    else if (strcmp(name, "SEI") == 0) ss << "I = 1";
+    else if (strcmp(name, "CLV") == 0) ss << "V = 0";
+    else if (strcmp(name, "CLD") == 0) ss << "D = 0";
+    else if (strcmp(name, "SED") == 0) ss << "D = 1";
+    // Special
+    else if (strcmp(name, "BIT") == 0) {
+        if (mode == ZP) ss << "test(A, [0x" << std::hex << std::setw(2) << std::setfill('0') << (int)lo << "])";
+        else if (mode == ABS) ss << "test(A, [0x" << std::hex << std::setw(4) << abs_addr << "])";
+    }
+    else if (strcmp(name, "NOP") == 0) ss << "/* no-op */";
+    else if (strcmp(name, "BRK") == 0) ss << "break()";
+    
+    return ss.str();
+}
+
 std::string Debugger::disassembleInstruction(u16 addr, int& length)
 {
     std::ostringstream ss;
@@ -185,48 +441,57 @@ std::string Debugger::disassembleInstruction(u16 addr, int& length)
     ss << " " << COLOR_GREEN << name << COLOR_RESET << " ";
 
     // Format operand
+    std::string operand;
     switch (mode) {
         case IMP:
             break;
         case ACC:
-            ss << "A";
+            operand = "A";
             break;
         case IMM:
-            ss << "#$" << std::setw(2) << (int)lo;
+            operand = "#$" + (std::ostringstream() << std::hex << std::setw(2) << std::setfill('0') << (int)lo).str();
             break;
         case ZP:
-            ss << "$" << std::setw(2) << (int)lo;
+            operand = "$" + (std::ostringstream() << std::hex << std::setw(2) << std::setfill('0') << (int)lo).str();
             break;
         case ZPX:
-            ss << "$" << std::setw(2) << (int)lo << ",X";
+            operand = "$" + (std::ostringstream() << std::hex << std::setw(2) << std::setfill('0') << (int)lo).str() + ",X";
             break;
         case ZPY:
-            ss << "$" << std::setw(2) << (int)lo << ",Y";
+            operand = "$" + (std::ostringstream() << std::hex << std::setw(2) << std::setfill('0') << (int)lo).str() + ",Y";
             break;
         case ABS:
-            ss << "$" << std::setw(4) << ((hi << 8) | lo);
+            operand = "$" + (std::ostringstream() << std::hex << std::setw(4) << std::setfill('0') << ((hi << 8) | lo)).str();
             break;
         case ABX:
-            ss << "$" << std::setw(4) << ((hi << 8) | lo) << ",X";
+            operand = "$" + (std::ostringstream() << std::hex << std::setw(4) << std::setfill('0') << ((hi << 8) | lo)).str() + ",X";
             break;
         case ABY:
-            ss << "$" << std::setw(4) << ((hi << 8) | lo) << ",Y";
+            operand = "$" + (std::ostringstream() << std::hex << std::setw(4) << std::setfill('0') << ((hi << 8) | lo)).str() + ",Y";
             break;
         case IND:
-            ss << "($" << std::setw(4) << ((hi << 8) | lo) << ")";
+            operand = "($" + (std::ostringstream() << std::hex << std::setw(4) << std::setfill('0') << ((hi << 8) | lo)).str() + ")";
             break;
         case IZX:
-            ss << "($" << std::setw(2) << (int)lo << ",X)";
+            operand = "($" + (std::ostringstream() << std::hex << std::setw(2) << std::setfill('0') << (int)lo).str() + ",X)";
             break;
         case IZY:
-            ss << "($" << std::setw(2) << (int)lo << "),Y";
+            operand = "($" + (std::ostringstream() << std::hex << std::setw(2) << std::setfill('0') << (int)lo).str() + "),Y";
             break;
         case REL: {
             s8 offset = (s8)lo;
             u16 target = addr + 2 + offset;
-            ss << "$" << std::setw(4) << target;
+            operand = "$" + (std::ostringstream() << std::hex << std::setw(4) << std::setfill('0') << target).str();
             break;
         }
+    }
+    
+    ss << std::left << std::setw(15) << operand;
+    
+    // Add pseudo-C code
+    std::string pseudoC = generatePseudoC(opcode, mode, lo, hi, addr);
+    if (!pseudoC.empty()) {
+        ss << "\t; " << pseudoC;
     }
 
     return ss.str();

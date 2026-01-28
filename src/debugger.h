@@ -42,6 +42,7 @@ private:
 
     // Helpers
     std::string disassembleInstruction(u16 addr, int& length);
+    std::string generatePseudoC(u8 opcode, int mode, u8 lo, u8 hi, u16 addr);
     std::string formatFlags(u8 status);
     void printRegisters();
     void printRegisterChanges();
