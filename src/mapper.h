@@ -2,8 +2,10 @@
 #define MAPPER_H
 
 #include <cstdint>
+#include <string>
 #include <vector>
 #include <memory>
+#include <iostream>
 
 // Forward declaration
 class Cartridge;

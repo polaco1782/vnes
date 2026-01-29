@@ -8,6 +8,8 @@ Cartridge::Cartridge()
     , battery(false)
     , mapper(nullptr)
     , initialMirroring(Mirroring::HORIZONTAL)
+    , prgRamDirty(false)
+    , framesSinceLastSave(0)
 {
 }
 
@@ -79,6 +81,26 @@ bool Cartridge::load(const std::string& filepath)
     // Create and initialize the mapper
     mapper = MapperFactory::create(mapperNumber);
     mapper->init(prg_rom, chr_rom, prg_ram, initialMirroring);
+
+    // Set up SRAM save path and load for battery-backed carts
+    if (battery) {
+        // Generate save file name from ROM path (replace .nes with .sav)
+        savePath = filepath;
+        size_t extPos = savePath.rfind(".nes");
+        if (extPos != std::string::npos) {
+            savePath.replace(extPos, 4, ".sav");
+        } else {
+            savePath += ".sav";
+        }
+
+        // Load SRAM from disk if it exists
+        std::ifstream saveFile(savePath, std::ios::binary);
+        if (saveFile) {
+            saveFile.read(reinterpret_cast<char*>(prg_ram.data()), prg_ram.size());
+            saveFile.close();
+            std::cout << "  Loaded SRAM from " << savePath << std::endl;
+        }
+    }
 
     loaded = true;
 
@@ -163,6 +185,12 @@ uint8_t Cartridge::readPrg(uint16_t addr) const
 
 void Cartridge::writePrg(uint16_t addr, uint8_t data)
 {
+    // Check if writing to PRG RAM for battery-backed save detection
+    if (battery && addr >= 0x6000 && addr < 0x8000) {
+        prgRamDirty = true;
+        framesSinceLastSave = 0;
+    }
+
     if (mapper) {
         mapper->writePrg(addr, data);
     }
@@ -183,9 +211,37 @@ void Cartridge::writeChr(uint16_t addr, uint8_t data)
     }
 }
 
-void Cartridge::signalScanline()
+void Cartridge::signalFrameComplete()
 {
+    if (!battery || !prgRamDirty) {
+        return;
+    }
+
+    framesSinceLastSave++;
+
+    // Save every 60 frames (~1 second at 60 FPS)
+    if (framesSinceLastSave >= 60) {
+        flushSRAM();
+        framesSinceLastSave = 0;
+    }
+
+    // Still signal mapper for other frame-based logic
     if (mapper) {
-        mapper->scanline();
+        mapper->scanline();  // Some mappers need frame timing
+    }
+}
+
+void Cartridge::flushSRAM()
+{
+    if (!battery || !prgRamDirty || prg_ram.empty() || savePath.empty()) {
+        return;
+    }
+
+    std::ofstream saveFile(savePath, std::ios::binary);
+    if (saveFile) {
+        saveFile.write(reinterpret_cast<const char*>(prg_ram.data()), prg_ram.size());
+        saveFile.close();
+        prgRamDirty = false;
+        std::cout << "SRAM saved to " << savePath << std::endl;
     }
 }

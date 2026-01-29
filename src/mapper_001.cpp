@@ -1,5 +1,4 @@
 #include "mapper_001.h"
-#include <iostream>
 
 Mapper001::Mapper001()
     : Mapper(1)
@@ -66,7 +65,6 @@ void Mapper001::writePrg(uint16_t addr, uint8_t data)
     if (addr >= 0x6000 && addr < 0x8000) {
         if (prgRam && !prgRam->empty()) {
             (*prgRam)[addr - 0x6000] = data;
-            std::cout << "PRG RAM Write: $" << std::hex << addr << " = $" << (int)data << std::dec << std::endl;
         }
         return;
     }

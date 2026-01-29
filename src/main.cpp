@@ -55,7 +55,13 @@ int main(int argc, char* argv[])
 
     // Normal execution with display
     std::cout << "\nStarting emulation..." << std::endl;
-    std::cout << "Controls: Arrow Keys, Z=A, X=B, Enter=Start, RShift=Select" << std::endl;
+    std::cout << "Controls:" << std::endl;
+    std::cout << "  Movement: Arrow Keys or WASD" << std::endl;
+    std::cout << "  A Button: Z or J" << std::endl;
+    std::cout << "  B Button: X or K" << std::endl;
+    std::cout << "  Start: Enter or Space" << std::endl;
+    std::cout << "  Select: Shift" << std::endl;
+    std::cout << "  (Multiple key bindings provided to avoid keyboard ghosting)" << std::endl;
     std::cout << "Press ESC to enter debugger, or close window to quit" << std::endl;
     
     Display display("VNES - NES Emulator");
@@ -75,6 +81,10 @@ int main(int argc, char* argv[])
         if (in_debugger) {
             // Run debugger
             std::cout << "\nEntering debugger (type 'c' or 'continue' to resume emulation, 'q' to quit)" << std::endl;
+            
+            // Flush SRAM when entering debugger
+            cartridge.flushSRAM();
+            
             debugger.run();
             in_debugger = false;
             std::cout << "Resuming emulation..." << std::endl;
@@ -97,10 +107,16 @@ int main(int argc, char* argv[])
             }
             bus.clearFrameComplete();
             
+            // Notify cartridge that frame is complete (for SRAM auto-save)
+            cartridge.signalFrameComplete();
+            
             // Update display
             display.update(bus.ppu.getFramebuffer());
         }
     }
+    
+    // Final SRAM flush on exit
+    cartridge.flushSRAM();
     
     std::cout << "Emulation stopped." << std::endl;
 

@@ -27,7 +27,6 @@
 class Mapper001 : public Mapper {
 public:
     Mapper001();
-    ~Mapper001() override = default;
 
     void init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
               std::vector<uint8_t>& prgRam, Mirroring initialMirroring) override;

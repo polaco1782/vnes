@@ -4,7 +4,6 @@
 #include "mapper_002.h"
 #include "mapper_004.h"
 #include "mapper_009.h"
-#include <iostream>
 
 Mapper::Mapper(uint8_t mapperNumber)
     : mapperNum(mapperNumber)

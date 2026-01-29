@@ -47,8 +47,8 @@ public:
     uint8_t readChr(uint16_t addr) const;
     void writeChr(uint16_t addr, uint8_t data);
 
-    // Optional mapper signals
-    void signalScanline();
+    void signalFrameComplete();
+    void flushSRAM();
 
 private:
     bool parseHeader(const INESHeader& header);
@@ -66,6 +66,11 @@ private:
     
     // Initial mirroring from ROM header (before mapper can change it)
     Mirroring initialMirroring;
+
+    // SRAM persistence (for battery-backed carts)
+    bool prgRamDirty;
+    uint32_t framesSinceLastSave;
+    std::string savePath;
 };
 
 #endif // CARTRIDGE_H

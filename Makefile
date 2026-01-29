@@ -2,8 +2,20 @@
 # C++11 Makefile
 
 CXX = g++
-CXXFLAGS = -std=c++11 -Wall -Wextra -Werror -Wunused-function -O0 -g
+CXXFLAGS = -std=c++11 -Wall -Wextra -Werror -Wunused-function -O0 -g -MMD -MP
 LDFLAGS = -lsfml-graphics -lsfml-window -lsfml-system -lsfml-audio
+
+# Release build flags with security hardening
+RELEASE_CXXFLAGS = -std=c++11 -O2 -D_FORTIFY_SOURCE=2 \
+    -fstack-protector-strong \
+    -fstack-clash-protection \
+    -fcf-protection=full \
+    -fPIE \
+    -Wall -Wextra -Werror=format-security -MMD -MP
+RELEASE_LDFLAGS = -pie \
+    -Wl,-z,relro,-z,now \
+    -Wl,-z,noexecstack \
+    -lsfml-graphics -lsfml-window -lsfml-system -lsfml-audio
 
 SRC_DIR = src
 BUILD_DIR = build
@@ -11,11 +23,19 @@ BIN_DIR = bin
 
 SOURCES = $(wildcard $(SRC_DIR)/*.cpp)
 OBJECTS = $(SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
-TARGET = $(BIN_DIR)/vnes
+RELEASE_OBJECTS = $(SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.release.o)
+DEPS = $(OBJECTS:.o=.d)
+RELEASE_DEPS = $(RELEASE_OBJECTS:.o=.d)
+DEBUG_TARGET = $(BIN_DIR)/vnes-debug
+RELEASE_TARGET = $(BIN_DIR)/vnes-release
 
-.PHONY: all clean dirs analyze
+.PHONY: all clean dirs analyze debug release
 
-all: dirs $(TARGET)
+all: debug
+
+debug: dirs $(DEBUG_TARGET)
+
+release: dirs $(RELEASE_TARGET)
 
 analyze:
 	@echo "Running cppcheck for unused functions..."
@@ -24,23 +44,21 @@ analyze:
 dirs:
 	@mkdir -p $(BUILD_DIR) $(BIN_DIR)
 
-$(TARGET): $(OBJECTS)
+$(DEBUG_TARGET): $(OBJECTS)
 	$(CXX) $(OBJECTS) -o $@ $(LDFLAGS)
+
+$(RELEASE_TARGET): $(RELEASE_OBJECTS)
+	$(CXX) $(RELEASE_OBJECTS) -o $@ $(RELEASE_LDFLAGS)
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/%.release.o: $(SRC_DIR)/%.cpp
+	$(CXX) $(RELEASE_CXXFLAGS) -c $< -o $@
+
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
 
-# Dependencies
-$(BUILD_DIR)/main.o: $(SRC_DIR)/main.cpp $(SRC_DIR)/bus.h $(SRC_DIR)/debugger.h $(SRC_DIR)/display.h $(SRC_DIR)/input.h $(SRC_DIR)/sound.h
-$(BUILD_DIR)/cartridge.o: $(SRC_DIR)/cartridge.cpp $(SRC_DIR)/cartridge.h
-$(BUILD_DIR)/cpu.o: $(SRC_DIR)/cpu.cpp $(SRC_DIR)/cpu.h $(SRC_DIR)/bus.h
-$(BUILD_DIR)/ppu.o: $(SRC_DIR)/ppu.cpp $(SRC_DIR)/ppu.h $(SRC_DIR)/bus.h
-$(BUILD_DIR)/apu.o: $(SRC_DIR)/apu.cpp $(SRC_DIR)/apu.h
-$(BUILD_DIR)/bus.o: $(SRC_DIR)/bus.cpp $(SRC_DIR)/bus.h $(SRC_DIR)/input.h
-$(BUILD_DIR)/debugger.o: $(SRC_DIR)/debugger.cpp $(SRC_DIR)/debugger.h $(SRC_DIR)/bus.h
-$(BUILD_DIR)/display.o: $(SRC_DIR)/display.cpp $(SRC_DIR)/display.h
-$(BUILD_DIR)/input.o: $(SRC_DIR)/input.cpp $(SRC_DIR)/input.h
-$(BUILD_DIR)/sound.o: $(SRC_DIR)/sound.cpp $(SRC_DIR)/sound.h $(SRC_DIR)/apu.h
+# Include auto-generated dependencies
+-include $(DEPS)
+-include $(RELEASE_DEPS)

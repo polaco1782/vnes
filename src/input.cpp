@@ -18,9 +18,11 @@ void Input::updateFromKeyboard()
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left))  controller_state |= BUTTON_LEFT;
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) controller_state |= BUTTON_RIGHT;
     
-    // Z = A, X = B
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Z))     controller_state |= BUTTON_A;
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::X))     controller_state |= BUTTON_B;
+    // Z/J = A, X/K = B (multiple bindings to avoid ghosting)
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Z) ||
+        sf::Keyboard::isKeyPressed(sf::Keyboard::Space)) controller_state |= BUTTON_A;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::X) ||
+        sf::Keyboard::isKeyPressed(sf::Keyboard::LShift)) controller_state |= BUTTON_B;
     
     // Enter = Start, RShift = Select
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Enter)) controller_state |= BUTTON_START;
