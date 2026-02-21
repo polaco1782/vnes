@@ -4,8 +4,12 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#ifdef _WIN32
+#include <conio.h>
+#else
 #include <termios.h>
 #include <unistd.h>
+#endif
 #include <cstring>
 
 // ANSI color codes
@@ -580,7 +584,7 @@ std::string Debugger::disassembleInstruction(u16 addr, int& length)
             operand = "($" + hexByte(lo) + ",X)";
             break;
         case IZY:
-            operand = "($" + hexByte(lo) + "),Y";
+            operand = "($" + hexByte(lo) + ") ,Y";
             break;
         case REL: {
             s8 offset = (s8)lo;
@@ -1179,6 +1183,79 @@ std::vector<std::string> Debugger::tokenize(const std::string& line)
 
 std::string Debugger::readLineWithHistory()
 {
+#ifdef _WIN32
+    std::string line;
+    int cursor_pos = 0;
+    int temp_history_index = (int)command_history.size();
+    std::string temp_line = "";
+
+    while (true) {
+        int ch = _getch();
+        if (ch == 13) { // Enter
+            std::cout << std::endl;
+            break;
+        }
+        else if (ch == 8) { // Backspace
+            if (cursor_pos > 0) {
+                line.erase(cursor_pos - 1, 1);
+                cursor_pos--;
+                // Redraw
+                std::cout << "\r" << COLOR_BOLD << "> " << COLOR_RESET << line << " ";
+                std::cout << "\r" << COLOR_BOLD << "> " << COLOR_RESET << line;
+                for (int i = (int)line.length(); i > cursor_pos; --i) std::cout << '\b';
+                std::cout.flush();
+            }
+        }
+        else if (ch == 0 || ch == 224) { // special keys
+            int n = _getch();
+            if (n == 72) { // up
+                if (temp_history_index > 0) {
+                    if (temp_history_index == (int)command_history.size()) temp_line = line;
+                    temp_history_index--;
+                    line = command_history[temp_history_index];
+                    cursor_pos = (int)line.length();
+                    std::cout << "\r" << COLOR_BOLD << "> " << COLOR_RESET << std::string( (int)temp_line.length()+10, ' ');
+                    std::cout << "\r" << COLOR_BOLD << "> " << COLOR_RESET << line;
+                    std::cout.flush();
+                }
+            } else if (n == 80) { // down
+                if (temp_history_index < (int)command_history.size()) {
+                    temp_history_index++;
+                    if (temp_history_index == (int)command_history.size()) line = temp_line;
+                    else line = command_history[temp_history_index];
+                    cursor_pos = (int)line.length();
+                    std::cout << "\r" << COLOR_BOLD << "> " << COLOR_RESET << std::string(50, ' ');
+                    std::cout << "\r" << COLOR_BOLD << "> " << COLOR_RESET << line;
+                    std::cout.flush();
+                }
+            } else if (n == 77) { // right
+                if (cursor_pos < (int)line.length()) {
+                    cursor_pos++;
+                    std::cout << '\033' << "[C";
+                    std::cout.flush();
+                }
+            } else if (n == 75) { // left
+                if (cursor_pos > 0) {
+                    cursor_pos--;
+                    std::cout << '\033' << "[D";
+                    std::cout.flush();
+                }
+            }
+        }
+        else if (ch >= 32 && ch < 127) {
+            line.insert((size_t)cursor_pos, 1, (char)ch);
+            cursor_pos++;
+            std::cout << (char)ch;
+            if (cursor_pos < (int)line.length()) {
+                std::cout << line.substr(cursor_pos);
+                for (int i = (int)line.length(); i > cursor_pos; --i) std::cout << '\b';
+            }
+            std::cout.flush();
+        }
+    }
+
+    return line;
+#else
     struct termios old_tio, new_tio;
     tcgetattr(STDIN_FILENO, &old_tio);
     new_tio = old_tio;
@@ -1284,6 +1361,7 @@ std::string Debugger::readLineWithHistory()
 
     tcsetattr(STDIN_FILENO, TCSANOW, &old_tio);
     return line;
+#endif
 }
 
 void Debugger::run()

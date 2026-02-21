@@ -2,6 +2,7 @@
 #include "input.h"
 #include <cstring>
 #include <sstream>
+#include "mapper_004.h" // Add this include for MMC3 IRQ support
 
 Bus::Bus()
     : input(nullptr), cartridge(nullptr), system_cycles(0), log_accesses(false)
@@ -131,6 +132,12 @@ void Bus::clock()
         apu.clearIRQ();
         cpu.irq();
     }
+
+    // Handle IRQ from Mapper
+    if (cartridge->hasIRQ()) {
+        cartridge->clearIRQ();
+        cpu.irq();
+	}
 
     system_cycles++;
 }

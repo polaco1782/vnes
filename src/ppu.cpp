@@ -594,6 +594,12 @@ void PPU::step()
     else if (cycle > 340) {
         cycle = 0;
         scanline++;
+        if (scanline < 240) {
+            // Notify cartridge/mapper of scanline (for MMC3 IRQ and mirroring changes)
+            if (cartridge) {
+               cartridge->scanline();
+            }
+        }
         if (scanline > 261) {
             scanline = 0;
             frame_complete = true;

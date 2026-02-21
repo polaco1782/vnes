@@ -54,6 +54,10 @@ public:
     // Mirroring control - some mappers can change mirroring dynamically
     Mirroring getMirroring() const { return mirroring; }
 
+	// IRQ handling - for mappers that support scanline-based IRQs (e.g. MMC3)
+	virtual bool irqPending() const { return false; }
+	virtual void clearIrq() {}
+
     // Mapper info
     uint8_t getMapperNumber() const { return mapperNum; }
     virtual const char* getName() const = 0;

@@ -2,7 +2,7 @@
 # C++11 Makefile
 
 CXX = g++
-CXXFLAGS = -std=c++11 -Wall -Wextra -Werror -Wunused-function -O0 -g -MMD -MP
+CXXFLAGS = -std=c++17 -Wall -Wextra -Werror -Wunused-function -O0 -g -MMD -MP
 LDFLAGS = -lsfml-graphics -lsfml-window -lsfml-system -lsfml-audio
 
 # Release build flags with security hardening

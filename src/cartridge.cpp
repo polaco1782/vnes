@@ -231,6 +231,29 @@ void Cartridge::signalFrameComplete()
     }
 }
 
+// call access to mapper scanline
+void Cartridge::scanline()
+{
+    if (mapper) {
+        mapper->scanline();
+    }
+}
+
+void Cartridge::clearIRQ() {
+    if (mapper) {
+        mapper->clearIrq();
+	}
+}
+
+bool Cartridge::hasIRQ()
+{
+    if (mapper && mapper->irqPending()) {
+        return true;
+    }
+    
+    return false;
+}
+
 void Cartridge::flushSRAM()
 {
     if (!battery || !prgRamDirty || prg_ram.empty() || savePath.empty()) {

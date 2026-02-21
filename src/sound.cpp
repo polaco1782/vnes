@@ -22,7 +22,8 @@ void Sound::connect(APU* apu_device)
 
 void Sound::start()
 {
-    initialize(CHANNEL_COUNT, SAMPLE_RATE);
+    // Use our own CHANNEL_COUNT constant instead of sf::Sound::getChannelCount()
+    initialize(CHANNEL_COUNT, SAMPLE_RATE, {sf::SoundChannel::Mono});
     play();
 }
 
@@ -42,7 +43,7 @@ void Sound::pushSample(float sample)
     if (filtered > 1.0f) filtered = 1.0f;
     if (filtered < -1.0f) filtered = -1.0f;
     
-    sf::Int16 int_sample = static_cast<sf::Int16>(filtered * 32767.0f);
+    s16 int_sample = static_cast<s16>(filtered * 32767.0f);
 
     std::lock_guard<std::mutex> lock(buffer_mutex);
     sample_buffer[buffer_write] = int_sample;

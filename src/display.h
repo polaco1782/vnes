@@ -3,6 +3,7 @@
 
 #include "types.h"
 #include <SFML/Graphics.hpp>
+#include <memory>
 
 class PPU;
 
@@ -31,10 +32,10 @@ private:
     static const int NES_WIDTH = 256;
     static const int NES_HEIGHT = 240;
     
-    sf::RenderWindow window;
-    sf::Texture texture;
-    sf::Sprite sprite;
-    sf::Uint8* pixels;
+    std::unique_ptr<sf::RenderWindow> window;
+    std::unique_ptr<sf::Texture> texture;
+    std::unique_ptr<sf::Sprite> sprite;
+    u8* pixels;
     sf::Clock clock;
     
     int window_width;

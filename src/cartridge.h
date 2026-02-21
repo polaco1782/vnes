@@ -34,6 +34,7 @@ public:
     Mirroring getMirroring() const;
     bool hasBattery() const { return battery; }
     const char* getMapperName() const;
+    Mapper* getMapper() const { return mapper.get(); }
 
     // ROM data access (for debugging/inspection)
     const std::vector<uint8_t>& getPrgRom() const { return prg_rom; }
@@ -46,6 +47,11 @@ public:
     // PPU interface for CHR space ($0000-$1FFF)
     uint8_t readChr(uint16_t addr) const;
     void writeChr(uint16_t addr, uint8_t data);
+
+	// Mapper-specific timing (for mappers that need it, eg: MMC3)
+    void Cartridge::scanline();
+    void Cartridge::clearIRQ();
+    bool Cartridge::hasIRQ();
 
     void signalFrameComplete();
     void flushSRAM();

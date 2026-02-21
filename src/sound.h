@@ -24,20 +24,20 @@ private:
     // SoundStream interface
     virtual bool onGetData(Chunk& data) override;
     virtual void onSeek(sf::Time timeOffset) override;
-    
+
     APU* apu;
-    
+
     static const unsigned int SAMPLE_RATE = 44100;
     static const unsigned int CHANNEL_COUNT = 1; // Mono
     static const unsigned int BUFFER_SIZE = 2048;
-    
-    sf::Int16 samples[BUFFER_SIZE];
 
-    std::vector<sf::Int16> sample_buffer;
+    s16 samples[BUFFER_SIZE];
+
+    std::vector<s16> sample_buffer;
     size_t buffer_read = 0;
     size_t buffer_write = 0;
     size_t buffer_count = 0;
-    sf::Int16 last_sample = 0;
+    s16 last_sample = 0;
     std::mutex buffer_mutex;
 
     // DC-block filter state
