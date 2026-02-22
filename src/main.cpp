@@ -6,6 +6,7 @@
 #include "display.h"
 #include "input.h"
 #include "sound.h"
+#include "web_server.h"
 
 void printUsage(const char* program)
 {
@@ -52,6 +53,10 @@ int main(int argc, char* argv[])
 
     std::cout << "\nSystem initialized!" << std::endl;
     std::cout << "CPU PC: 0x" << std::hex << bus.cpu.getPC() << std::dec << std::endl;
+
+    // Start web server (provides /cpu endpoint)
+    WebServer web(&bus);
+    web.start(18080);
 
     // Normal execution with display
     std::cout << "\nStarting emulation..." << std::endl;
@@ -117,6 +122,7 @@ int main(int argc, char* argv[])
     
     // Final SRAM flush on exit
     cartridge.flushSRAM();
+    web.stop();
     
     std::cout << "Emulation stopped." << std::endl;
 

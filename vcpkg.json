@@ -1,0 +1,11 @@
+{
+  "name": "vnes",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "crow",
+    {
+      "name": "sfml",
+      "features": ["graphics", "window", "audio"]
+    }
+  ]
+}

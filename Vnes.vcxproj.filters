@@ -63,6 +63,9 @@
     <ClCompile Include="src\sound.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\web_server.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\apu.h">
@@ -113,5 +116,14 @@
     <ClInclude Include="src\types.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\web_server.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="src\web_server_integration.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="vcpkg.json" />
   </ItemGroup>
 </Project>

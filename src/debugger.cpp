@@ -605,6 +605,19 @@ std::string Debugger::disassembleInstruction(u16 addr, int& length)
     return ss.str();
 }
 
+std::vector<std::string> Debugger::disassemble(u16 addr, int count)
+{
+    std::vector<std::string> lines;
+    for (int i = 0; i < count; i++) {
+        int len = 0;
+        std::string line = disassembleInstruction(addr, len);
+        lines.push_back(line);
+        if (len <= 0) break;
+        addr = addr + len;
+    }
+    return lines;
+}
+
 void Debugger::cmdHelp()
 {
     std::cout << COLOR_BOLD << "\nVNES Debugger Commands:" << COLOR_RESET << std::endl;
