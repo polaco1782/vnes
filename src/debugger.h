@@ -16,8 +16,8 @@ public:
 
     void connect(Bus* bus);
     void run();
-
-    // Web-friendly disassembly helper: returns 'count' disassembled lines starting at addr
+    
+    // Public method for web server to get disassembly
     std::vector<std::string> disassemble(u16 addr, int count = 10);
 
 private:

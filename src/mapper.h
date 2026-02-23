@@ -7,6 +7,8 @@
 #include <memory>
 #include <iostream>
 
+#include "types.h"
+
 // Forward declaration
 class Cartridge;
 
@@ -36,20 +38,20 @@ static const uint32_t TRAINER_SIZE = 512;
  */
 class Mapper {
 public:
-    Mapper(uint8_t mapperNumber);
+    Mapper(u8 mapperNumber);
     virtual ~Mapper() = default;
 
     // Initialize the mapper with ROM data
-    virtual void init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr, 
-                      std::vector<uint8_t>& prgRam, Mirroring initialMirroring);
+    virtual void init(std::vector<u8>& prg, std::vector<u8>& chr, 
+                      std::vector<u8>& prgRam, Mirroring initialMirroring);
 
     // CPU interface for PRG space ($6000-$FFFF)
-    virtual uint8_t readPrg(uint16_t addr) = 0;
-    virtual void writePrg(uint16_t addr, uint8_t data) = 0;
+    virtual u8 readPrg(u16 addr) = 0;
+    virtual void writePrg(u16 addr, u8 data) = 0;
 
     // PPU interface for CHR space ($0000-$1FFF)
-    virtual uint8_t readChr(uint16_t addr) = 0;
-    virtual void writeChr(uint16_t addr, uint8_t data) = 0;
+    virtual u8 readChr(u16 addr) = 0;
+    virtual void writeChr(u16 addr, u8 data) = 0;
 
     // Mirroring control - some mappers can change mirroring dynamically
     Mirroring getMirroring() const { return mirroring; }
@@ -59,23 +61,23 @@ public:
 	virtual void clearIrq() {}
 
     // Mapper info
-    uint8_t getMapperNumber() const { return mapperNum; }
+    u8 getMapperNumber() const { return mapperNum; }
     virtual const char* getName() const = 0;
 
     // Optional: scanline counter for mappers like MMC3
     virtual void scanline() {}
 
     // Optional: PPU address notification for mappers like MMC2/MMC4
-    virtual void notifyPpuAddr(uint16_t addr) { (void)addr; }
+    virtual void notifyPpuAddr(u16 addr) { (void)addr; }
 
 protected:
-    uint8_t mapperNum;
+    u8 mapperNum;
     Mirroring mirroring;
     
     // Pointers to cartridge memory (owned by Cartridge)
-    std::vector<uint8_t>* prgRom;
-    std::vector<uint8_t>* chrRom;
-    std::vector<uint8_t>* prgRam;
+    std::vector<u8>* prgRom;
+    std::vector<u8>* chrRom;
+    std::vector<u8>* prgRam;
 };
 
 /**
@@ -83,7 +85,7 @@ protected:
  */
 class MapperFactory {
 public:
-    static std::unique_ptr<Mapper> create(uint8_t mapperNumber);
+    static std::unique_ptr<Mapper> create(u8 mapperNumber);
 };
 
 #endif // MAPPER_H

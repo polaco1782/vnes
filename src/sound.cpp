@@ -3,8 +3,8 @@
 #include <cstring>
 #include <algorithm>
 
-Sound::Sound()
-    : apu(nullptr)
+Sound::Sound() 
+    : initialized(false)
 {
     std::memset(samples, 0, sizeof(samples));
     sample_buffer.resize(MAX_BUFFER_SIZE);
@@ -13,11 +13,6 @@ Sound::Sound()
 Sound::~Sound()
 {
     stop();
-}
-
-void Sound::connect(APU* apu_device)
-{
-    apu = apu_device;
 }
 
 void Sound::start()

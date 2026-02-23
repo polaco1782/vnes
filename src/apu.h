@@ -2,6 +2,7 @@
 #define APU_H
 
 #include "types.h"
+#include "sound.h"
 #include <cstdint>
 
 class Sound;
@@ -14,9 +15,8 @@ public:
     void reset();
     void step();
     
-    // Connect sound output
-    void connect(Sound* snd);
-    void connectBus(Bus* bus_ptr);
+    // Connect APU
+    void connect(Bus* bus_ptr);
 
     // CPU interface (registers $4000-$4017)
     u8 readRegister(u16 addr);
@@ -147,7 +147,7 @@ private:
     u64 cycles;
     
     // Sample generation
-    Sound* sound = nullptr;
+    Sound sound;
     Bus* bus = nullptr;
     float sample_accumulator = 0.0f;
     int samples_this_frame = 0;

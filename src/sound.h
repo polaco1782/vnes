@@ -6,26 +6,24 @@
 #include <vector>
 #include <mutex>
 
-class APU;
-
 class Sound : public sf::SoundStream {
 public:
     Sound();
     ~Sound();
     
-    void connect(APU* apu_device);
     void start();
     void stop();
     
     // Called from emulation thread to push samples
     void pushSample(float sample);
+
+    // has been initialized with a valid sound device
+    bool initialized;
     
 private:
     // SoundStream interface
     virtual bool onGetData(Chunk& data) override;
     virtual void onSeek(sf::Time timeOffset) override;
-
-    APU* apu;
 
     static const unsigned int SAMPLE_RATE = 44100;
     static const unsigned int CHANNEL_COUNT = 1; // Mono

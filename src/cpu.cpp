@@ -63,12 +63,12 @@ void CPU::nmi()
 // Memory access
 u8 CPU::read(u16 addr)
 {
-    return bus->cpuRead(addr);
+    return bus->read(addr);
 }
 
 void CPU::write(u16 addr, u8 data)
 {
-    bus->cpuWrite(addr, data);
+    bus->write(addr, data);
 }
 
 // Stack operations

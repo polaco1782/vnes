@@ -32,8 +32,8 @@ public:
     void clock();
 
     // CPU memory interface
-    u8 cpuRead(u16 addr);
-    void cpuWrite(u16 addr, u8 data);
+    u8 read(u16 addr);
+    void write(u16 addr, u8 data);
 
     // Components (public for direct access)
     CPU cpu;

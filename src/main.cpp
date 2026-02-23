@@ -72,13 +72,9 @@ int main(int argc, char* argv[])
     Display display("VNES - NES Emulator");
     Debugger debugger;
     Input input;
-    Sound sound;
     
     bus.connectInput(&input);
     debugger.connect(&bus);
-    sound.connect(&bus.apu);
-    bus.apu.connect(&sound);
-    sound.start();
     
     bool in_debugger = false;
     
@@ -114,6 +110,12 @@ int main(int argc, char* argv[])
             
             // Notify cartridge that frame is complete (for SRAM auto-save)
             cartridge.signalFrameComplete();
+            
+            // Process any pending web commands queued by websocket handlers
+            // Process multiple commands to avoid backlog but limit to avoid long stalls
+            for (int i = 0; i < 100; ++i) {
+                if (!web.processOneCommand(&bus)) break;
+            }
             
             // Update display
             display.update(bus.ppu.getFramebuffer());

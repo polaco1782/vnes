@@ -5,7 +5,9 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <unordered_map>
 #include "mapper.h"
+#include "types.h"
 
 // iNES Header (16 bytes)
 struct INESHeader {
@@ -66,6 +68,8 @@ private:
     std::vector<uint8_t> prg_rom;  // Program ROM
     std::vector<uint8_t> chr_rom;  // Character ROM (can be RAM if size=0)
     std::vector<uint8_t> prg_ram;  // PRG RAM at $6000-$7FFF (8KB)
+
+    std::unordered_map<u32, u8> gg_codes; // GameGenie codes (address -> value)
     
     // The pluggable mapper
     std::unique_ptr<Mapper> mapper;

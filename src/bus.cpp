@@ -12,7 +12,7 @@ Bus::Bus()
     // Connect components
     cpu.connect(this);
     ppu.connect(this, nullptr);
-    apu.connectBus(this);
+    apu.connect(this);
 }
 
 std::string Bus::getRegionName(u16 addr) const
@@ -96,6 +96,7 @@ void Bus::connect(Cartridge* cart)
 {
     cartridge = cart;
     ppu.connect(this, cart);
+    apu.connect(this);
 }
 
 void Bus::connectInput(Input* input_device)
@@ -142,7 +143,7 @@ void Bus::clock()
     system_cycles++;
 }
 
-u8 Bus::cpuRead(u16 addr)
+u8 Bus::read(u16 addr)
 {
     u8 data = 0;
     
@@ -179,7 +180,7 @@ u8 Bus::cpuRead(u16 addr)
     return data;
 }
 
-void Bus::cpuWrite(u16 addr, u8 data)
+void Bus::write(u16 addr, u8 data)
 {
     logAccess(MemAccess::WRITE, addr, data);
     

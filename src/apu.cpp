@@ -35,8 +35,8 @@ const u8 APU::duty_table[4][8] = {
 
 APU::APU()
     : frame_counter_mode(0), irq_inhibit(false), irq_flag(false)
-    , frame_counter(0), cycles(0)
-    , sound(nullptr), sample_accumulator(0.0f), samples_this_frame(0)
+    , frame_counter(0), cycles(0), sample_accumulator(0.0f)
+    , samples_this_frame(0), sound()
 {
     // Initialize pulse channels
     for (int i = 0; i < 2; i++) {
@@ -103,12 +103,7 @@ APU::APU()
     dmc.enabled = false;
 }
 
-void APU::connect(Sound* snd)
-{
-    sound = snd;
-}
-
-void APU::connectBus(Bus* bus_ptr)
+void APU::connect(Bus* bus_ptr)
 {
     bus = bus_ptr;
 }
@@ -121,6 +116,12 @@ void APU::reset()
     frame_counter = 0;
     sample_accumulator = 0.0f;
     samples_this_frame = 0;
+
+    // start the sound system if not already started
+    if(!sound.initialized) {
+        sound.initialized = true;
+        sound.start();
+    }
 }
 
 void APU::clockTimers()
@@ -264,7 +265,7 @@ void APU::clockDMC()
 {
     // Fetch new sample byte when buffer empty
     if (dmc.sample_buffer_empty && dmc.bytes_remaining > 0 && bus != nullptr) {
-        dmc.sample_buffer = bus->cpuRead(dmc.current_addr);
+        dmc.sample_buffer = bus->read(dmc.current_addr);
         dmc.sample_buffer_empty = false;
 
         dmc.current_addr = (dmc.current_addr == 0xFFFF) ? 0x8000 : (dmc.current_addr + 1);
@@ -365,10 +366,7 @@ void APU::step()
     sample_accumulator += 1.0f;
     if (sample_accumulator >= CYCLES_PER_SAMPLE) {
         sample_accumulator -= CYCLES_PER_SAMPLE;
-        
-        if (sound != nullptr) {
-            sound->pushSample(getOutput());
-        }
+        sound.pushSample(getOutput());
     }
 }
 

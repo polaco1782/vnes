@@ -505,7 +505,7 @@ std::string Debugger::disassembleInstruction(u16 addr, int& length)
 {
     std::ostringstream ss;
     
-    u8 opcode = bus->cpuRead(addr);
+    u8 opcode = bus->read(addr);
     const char* name = opcode_names[opcode];
     AddrMode mode = opcode_modes[opcode];
 
@@ -530,7 +530,7 @@ std::string Debugger::disassembleInstruction(u16 addr, int& length)
         case IZX:
         case IZY:
         case REL:
-            lo = bus->cpuRead(addr + 1);
+            lo = bus->read(addr + 1);
             ss << std::setw(2) << (int)lo << "    ";
             length = 2;
             break;
@@ -538,8 +538,8 @@ std::string Debugger::disassembleInstruction(u16 addr, int& length)
         case ABX:
         case ABY:
         case IND:
-            lo = bus->cpuRead(addr + 1);
-            hi = bus->cpuRead(addr + 2);
+            lo = bus->read(addr + 1);
+            hi = bus->read(addr + 2);
             ss << std::setw(2) << (int)lo << " " << std::setw(2) << (int)hi << " ";
             length = 3;
             break;
@@ -603,19 +603,6 @@ std::string Debugger::disassembleInstruction(u16 addr, int& length)
     }
 
     return ss.str();
-}
-
-std::vector<std::string> Debugger::disassemble(u16 addr, int count)
-{
-    std::vector<std::string> lines;
-    for (int i = 0; i < count; i++) {
-        int len = 0;
-        std::string line = disassembleInstruction(addr, len);
-        lines.push_back(line);
-        if (len <= 0) break;
-        addr = addr + len;
-    }
-    return lines;
 }
 
 void Debugger::cmdHelp()
@@ -779,13 +766,13 @@ void Debugger::cmdMemory(u16 addr, int count)
         
         // Hex bytes
         for (int j = 0; j < 16 && (i + j) < count; j++) {
-            std::cout << std::setw(2) << (int)bus->cpuRead(addr + i + j) << " ";
+            std::cout << std::setw(2) << (int)bus->read(addr + i + j) << " ";
         }
         
         // ASCII
         std::cout << " |";
         for (int j = 0; j < 16 && (i + j) < count; j++) {
-            u8 c = bus->cpuRead(addr + i + j);
+            u8 c = bus->read(addr + i + j);
             std::cout << (char)((c >= 32 && c < 127) ? c : '.');
         }
         std::cout << "|" << std::endl;
@@ -850,7 +837,7 @@ void Debugger::cmdStack()
     
     std::cout << std::hex << std::setfill('0');
     for (int i = 0xFF; i > sp; i--) {
-        u8 val = bus->cpuRead(0x0100 + i);
+        u8 val = bus->read(0x0100 + i);
         std::cout << "  $01" << std::setw(2) << i << ": " 
                   << std::setw(2) << (int)val << std::endl;
     }
@@ -1178,7 +1165,7 @@ void Debugger::cmdIo()
 
 void Debugger::cmdWrite(u16 addr, u8 value)
 {
-    bus->cpuWrite(addr, value);
+    bus->write(addr, value);
     std::cout << "Wrote $" << std::hex << std::setw(2) << std::setfill('0') << (int)value
               << " to $" << std::setw(4) << addr << " [" << getMemoryRegion(addr) << "]:" << std::dec << std::endl;
 }
@@ -1537,4 +1524,16 @@ void Debugger::run()
     }
 
     std::cout << "\nDebugger exited." << std::endl;
+}
+
+std::vector<std::string> Debugger::disassemble(u16 addr, int count)
+{
+    std::vector<std::string> lines;
+    for (int i = 0; i < count; i++) {
+        int len;
+        std::string line = disassembleInstruction(addr, len);
+        lines.push_back(line);
+        addr += len;
+    }
+    return lines;
 }

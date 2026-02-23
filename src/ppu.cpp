@@ -220,7 +220,7 @@ void PPU::writeDMA(u8 data)
     // OAM DMA - transfer 256 bytes from CPU memory
     u16 addr = data << 8;
     for (int i = 0; i < 256; i++) {
-        oam[oam_addr++] = bus->cpuRead(addr + i);
+        oam[oam_addr++] = bus->read(addr + i);
     }
 }
 

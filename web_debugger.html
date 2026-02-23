@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>vNES Web Debugger</title>
+<style>
+body{font-family:'Consolas','Monaco',monospace;padding:20px;background:#1a1a2e;color:#eee;}
+h1{color:#00d4ff;text-shadow:0 0 10px #00d4ff;}
+h2{color:#ff6b6b;margin-top:20px;}
+.container{max-width:1400px;margin:0 auto;}
+.panel{background:#16213e;padding:15px;border-radius:8px;margin:10px 0;border:1px solid #0f3460;}
+button{padding:10px 16px;margin:5px;background:#0f3460;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px;transition:all 0.2s;}
+button:hover{background:#00d4ff;color:#1a1a2e;}
+button.danger{background:#e94560;}
+button.danger:hover{background:#ff6b6b;}
+button.success{background:#00d4ff;color:#1a1a2e;}
+pre{background:#0a0a1a;color:#bada55;padding:15px;border-radius:4px;overflow-x:auto;font-size:13px;line-height:1.4;}
+input,select{padding:8px;background:#0a0a1a;color:#fff;border:1px solid #0f3460;border-radius:4px;font-family:inherit;}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:15px;}
+.register{display:inline-block;margin:5px 10px;}
+.reg-name{color:#00d4ff;font-weight:bold;}
+.reg-value{color:#bada55;}
+.flag{cursor:help;}
+.changed{color:#ff6b6b;font-weight:bold;}
+#cpu-state,#memory-view,#disasm-view{transition:all 0.3s;}
+.tabs{display:flex;border-bottom:2px solid #0f3460;margin-bottom:15px;}
+.tab{padding:10px 20px;cursor:pointer;background:#0f3460;margin-right:5px;border-radius:4px 4px 0 0;}
+.tab.active{background:#00d4ff;color:#1a1a2e;}
+.tab-content{display:none;}
+.tab-content.active{display:block;}
+a{color:#00d4ff;}
+.breakpoint-list{list-style:none;padding:0;}
+.breakpoint-list li{background:#0a0a1a;padding:8px;margin:5px 0;border-left:3px solid #e94560;}
+.mem-row{display:flex;align-items:center;padding:2px 0;}
+.mem-addr{color:#00d4ff;width:80px;}
+.mem-hex{color:#bada55;width:400px;}
+.mem-ascii{color:#888;}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🕹️ vNES Web Debugger</h1>
+
+<div class="panel">
+<h2>CPU State</h2>
+<div id="cpu-state">Loading...</div>
+<div style="margin-top:10px;">
+<button id="step-btn">Step</button>
+<button id="step10-btn">Step 10</button>
+<button class="danger" id="reset-btn">Reset</button>
+<button id="refresh-btn">Refresh</button>
+</div>
+</div>
+
+<div class="panel">
+<h2>Disassembly</h2>
+<div>
+<input type="text" id="disasm-addr" placeholder="Address (hex)">
+<input type="number" id="disasm-count" value="15" min="1" max="50">
+<button id="disasm-btn">Disassemble</button>
+</div>
+<pre id="disasm-view">Click Disassemble or Step to see instructions...</pre>
+</div>
+
+<div class="panel">
+<h2>Memory Viewer</h2>
+<div>
+<input type="text" id="mem-addr" placeholder="Address (hex, e.g. 0000)">
+<input type="number" id="mem-count" value="256" min="16" max="1024">
+<button id="readmem-btn">Read Memory</button>
+</div>
+<pre id="memory-view">Click Read Memory to view...</pre>
+</div>
+
+<div class="grid">
+<div class="panel">
+<h2>PPU Registers</h2>
+<div id="ppu-state">Loading...</div>
+</div>
+
+<div class="panel">
+<h2>APU Status</h2>
+<div id="apu-state">Loading...</div>
+</div>
+</div>
+
+<div class="panel">
+<h2>Breakpoints</h2>
+<div>
+<input type="text" id="bp-addr" placeholder="Address (hex)">
+<button id="addbp-btn">Add</button>
+</div>
+<ul id="breakpoint-list" class="breakpoint-list"></ul>
+</div>
+
+<div class="panel">
+<h2>Stack</h2>
+<div id="stack-view">Loading...</div>
+</div>
+
+<div class="panel">
+<h2>Game Genie</h2>
+<div>
+<input type="text" id="gg-code" placeholder="Game Genie code (e.g. XXXXXX or XXXXXXXX)">
+<button id="gg-btn">Apply Code</button>
+</div>
+<div style="font-size:12px;color:#888;margin-top:5px;">Formats: 6 chars (XXXXXX) or 8 chars (XXXXXXXX) - uppercase hex only</div>
+<div id="gg-message" style="margin-top:10px;color:#00d4ff;"></div>
+</div>
+
+</div>
+
+<script>
+// WebSocket-based client to match server /ws command protocol
+let ws = null;
+let pendingResolvers = [];
+let clientBreakpoints = []; // local list since server doesn't return full list
+const REFRESH_MS = 1000;
+
+function connectWebSocket() {
+  const proto = (location.protocol === 'https:') ? 'wss' : 'ws';
+  ws = new WebSocket(proto + '://' + location.host + '/ws');
+
+  ws.onopen = function() {
+    console.log('WebSocket connected');
+    // immediately request full state
+    refreshAll();
+  };
+
+  ws.onmessage = function(ev) {
+    try {
+      const data = JSON.parse(ev.data);
+      if (pendingResolvers.length > 0) {
+        const resolve = pendingResolvers.shift();
+        resolve(data);
+      } else {
+        // unsolicited message - treat as state update
+        dispatchMessage(data);
+      }
+    } catch (e) {
+      console.error('Invalid JSON from ws', e);
+    }
+  };
+
+  ws.onclose = function() {
+    console.warn('WebSocket closed, retry in 1s');
+    setTimeout(connectWebSocket, 1000);
+  };
+
+  ws.onerror = function(e) {
+    console.error('WebSocket error', e);
+    ws.close();
+  };
+}
+
+function sendCommand(obj, timeout = 2000) {
+  return new Promise(function(resolve, reject) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      reject('WebSocket not connected');
+      return;
+    }
+    pendingResolvers.push(resolve);
+    ws.send(JSON.stringify(obj));
+    setTimeout(function() {
+      // if still pending, reject
+      const idx = pendingResolvers.indexOf(resolve);
+      if (idx !== -1) {
+        pendingResolvers.splice(idx, 1);
+        reject('timeout');
+      }
+    }, timeout);
+  });
+}
+
+function dispatchMessage(data) {
+  // handle based on type or presence of fields
+  if (data.type === 'all' || data.cpu) {
+    if (data.cpu) updateCpu(data.cpu);
+    if (data.disasm) {
+      document.getElementById('disasm-view').textContent = (data.disasm.lines || []).join('\n');
+    }
+    // server currently doesn't provide ppu/apu/stack in getAll - ignore if absent
+  } else if (data.type === 'cpu' && data.cpu) {
+    updateCpu(data.cpu);
+    if (data.disasm) document.getElementById('disasm-view').textContent = (data.disasm.lines || []).join('\n');
+  } else if (data.type === 'breakpoints') {
+    // no payload from server; rely on client-side list
+    updateBreakpoints({breakpoints: clientBreakpoints});
+  } else if (data.pc && data.lines) {
+    // disassemble response
+    document.getElementById('disasm-view').textContent = data.pc + '\n' + (data.lines || []).join('\n');
+  } else if (data.content) {
+    document.getElementById('memory-view').textContent = data.content;
+  } else if (data.type === 'gamegenie' && data.message) {
+    document.getElementById('gg-message').textContent = data.message;
+  } else {
+    console.log('Unhandled ws message', data);
+  }
+}
+
+function refreshAll() {
+  // request overall state
+  sendCommand({cmd: 'getAll'}).then(function(data) {
+    dispatchMessage(data);
+  }).catch(function() {
+    // ignore
+  });
+}
+
+function updateCpu(data) {
+  if (!data) return;
+  let html = '';
+  html += '<span class="register"><span class="reg-name">PC:</span> <span class="reg-value">' + (data.pc || '') + '</span></span>';
+  html += '<span class="register"><span class="reg-name">A:</span> <span class="reg-value">' + (data.a || '') + '</span></span>';
+  html += '<span class="register"><span class="reg-name">X:</span> <span class="reg-value">' + (data.x || '') + '</span></span>';
+  html += '<span class="register"><span class="reg-name">Y:</span> <span class="reg-value">' + (data.y || '') + '</span></span>';
+  html += '<span class="register"><span class="reg-name">SP:</span> <span class="reg-value">' + (data.sp || '') + '</span></span>';
+  html += '<span class="register"><span class="reg-name">P:</span> <span class="reg-value">' + (data.status || '') + '</span></span>';
+  html += '<span class="register"><span class="reg-name">Cycles:</span> <span class="reg-value">' + (data.cycles || '') + '</span></span>';
+  document.getElementById('cpu-state').innerHTML = html;
+}
+
+function updatePpu(data) {
+  if (!data) return;
+  let html = '';
+  html += '<span class="register"><span class="reg-name">CTRL:</span> <span class="reg-value">' + (data.ctrl || '') + '</span></span> ';
+  html += '<span class="register"><span class="reg-name">MASK:</span> <span class="reg-value">' + (data.mask || '') + '</span></span> ';
+  html += '<span class="register"><span class="reg-name">STATUS:</span> <span class="reg-value">' + (data.status || '') + '</span></span><br>';
+  html += '<span class="register"><span class="reg-name">Scanline:</span> <span class="reg-value">' + (data.scanline || '') + '</span></span> ';
+  html += '<span class="register"><span class="reg-name">Cycle:</span> <span class="reg-value">' + (data.cycle || '') + '</span></span> ';
+  html += '<span class="register"><span class="reg-name">V:</span> <span class="reg-value">' + (data.vram_addr || '') + '</span></span>';
+  document.getElementById('ppu-state').innerHTML = html;
+}
+
+function updateApu(data) {
+  if (!data) return;
+  let html = '';
+  html += '<span class="register"><span class="reg-name">Pulse1:</span> <span class="reg-value">' + (data.pulse1 ? data.pulse1.enabled : '') + '</span></span> ';
+  html += '<span class="register"><span class="reg-name">Pulse2:</span> <span class="reg-value">' + (data.pulse2 ? data.pulse2.enabled : '') + '</span></span><br>';
+  html += '<span class="register"><span class="reg-name">Triangle:</span> <span class="reg-value">' + (data.triangle ? data.triangle.enabled : '') + '</span></span> ';
+  html += '<span class="register"><span class="reg-name">Noise:</span> <span class="reg-value">' + (data.noise ? data.noise.enabled : '') + '</span></span> ';
+  html += '<span class="register"><span class="reg-name">DMC:</span> <span class="reg-value">' + (data.dmc ? data.dmc.enabled : '') + '</span></span>';
+  document.getElementById('apu-state').innerHTML = html;
+}
+
+function updateBreakpoints(data) {
+  let list = data && data.breakpoints ? data.breakpoints : clientBreakpoints;
+  let html = '';
+  if (!list || list.length === 0) {
+    html = '<li>No breakpoints set</li>';
+  } else {
+    list.forEach(function(bp) {
+      html += '<li>$' + bp + ' <a href="#" onclick="removeBreakpoint(\'' + bp + '\')">[x]</a></li>';
+    });
+  }
+  document.getElementById('breakpoint-list').innerHTML = html;
+}
+
+function updateStack(data) {
+  let html = '';
+  if (!data || !data.stack) {
+    document.getElementById('stack-view').innerHTML = 'Stack empty';
+    return;
+  }
+  data.stack.forEach(function(item) {
+    html += '<div class="mem-row"><span class="mem-addr">' + item.addr + '</span><span class="mem-hex">' + item.value + '</span></div>';
+  });
+  document.getElementById('stack-view').innerHTML = html || 'Stack empty';
+}
+
+function step() {
+  sendCommand({cmd: 'step', count: 1}).then(function(data) {
+    dispatchMessage(data);
+  }).catch(function(e){ console.warn(e); });
+}
+
+function stepMany() {
+  sendCommand({cmd: 'step', count: 10}).then(function(data) {
+    dispatchMessage(data);
+  }).catch(function(e){ console.warn(e); });
+}
+
+function reset() {
+  sendCommand({cmd: 'reset'}).then(function(data) {
+    // refresh state after reset
+    refreshAll();
+  }).catch(function(e){ console.warn(e); });
+}
+
+function disassembleAt() {
+  let addrStr = document.getElementById('disasm-addr').value;
+  let count = parseInt(document.getElementById('disasm-count').value) || 10;
+  let addr = addrStr ? parseInt(addrStr, 16) : 0;
+  sendCommand({cmd: 'disassemble', addr: addr, count: count}).then(function(data) {
+    dispatchMessage(data);
+  }).catch(function(e){ console.warn(e); });
+}
+
+function readMemory() {
+  let addrStr = document.getElementById('mem-addr').value || '0';
+  let count = parseInt(document.getElementById('mem-count').value) || 256;
+  let addr = addrStr ? parseInt(addrStr, 16) : 0;
+  sendCommand({cmd: 'memory', addr: addr, count: count}).then(function(data) {
+    dispatchMessage(data);
+  }).catch(function(e){ console.warn(e); });
+}
+
+function addBreakpoint() {
+  let addrStr = document.getElementById('bp-addr').value;
+  if (!addrStr) return;
+  let addr = parseInt(addrStr, 16);
+  let hex = addr.toString(16).toUpperCase().padStart(4,'0');
+  sendCommand({cmd: 'addBreakpoint', addr: addr}).then(function(data) {
+    // update local list and ui
+    if (clientBreakpoints.indexOf(hex) === -1) clientBreakpoints.push(hex);
+    updateBreakpoints({breakpoints: clientBreakpoints});
+    document.getElementById('bp-addr').value = '';
+  }).catch(function(e){ console.warn(e); });
+}
+
+function removeBreakpoint(addrHex) {
+  let addr = parseInt(addrHex, 16);
+  sendCommand({cmd: 'removeBreakpoint', addr: addr}).then(function(data) {
+    // remove from local list
+    clientBreakpoints = clientBreakpoints.filter(function(x){ return x !== addrHex; });
+    updateBreakpoints({breakpoints: clientBreakpoints});
+  }).catch(function(e){ console.warn(e); });
+}
+
+function gamegenieWrite() {
+  let ggcode = document.getElementById('gg-code').value.trim().toUpperCase();
+  if (!ggcode) {
+    document.getElementById('gg-message').textContent = 'Please enter a Game Genie code';
+    return;
+  }
+  
+  // Validate NES GameGenie format (6 or 8 hex characters, no hyphens)
+  if (!/^[A-F0-9]{6}$/.test(ggcode) && !/^[A-F0-9]{8}$/.test(ggcode)) {
+    document.getElementById('gg-message').textContent = ggcode + ' is not a valid Game Genie code format';
+    //return;
+  }
+  
+  sendCommand({cmd: 'gamegenie', code: ggcode}).then(function(data) {
+    if (data.error) {
+      document.getElementById('gg-message').textContent = data.error;
+    } else if (data.message) {
+      document.getElementById('gg-message').textContent = data.message;
+    } else {
+      document.getElementById('gg-message').textContent = 'Game Genie code applied successfully';
+    }
+    // Clear input after successful write
+    document.getElementById('gg-code').value = '';
+  }).catch(function(e){ 
+    console.warn(e);
+    document.getElementById('gg-message').textContent = 'Failed to apply Game Genie code';
+  });
+}
+
+// Attach event listeners to buttons
+document.getElementById('step-btn').addEventListener('click', step);
+document.getElementById('step10-btn').addEventListener('click', stepMany);
+document.getElementById('reset-btn').addEventListener('click', reset);
+document.getElementById('refresh-btn').addEventListener('click', refreshAll);
+document.getElementById('disasm-btn').addEventListener('click', disassembleAt);
+document.getElementById('readmem-btn').addEventListener('click', readMemory);
+document.getElementById('addbp-btn').addEventListener('click', addBreakpoint);
+document.getElementById('gg-btn').addEventListener('click', gamegenieWrite);
+
+// Start websocket and periodic refresh
+connectWebSocket();
+setInterval(function(){ if (ws && ws.readyState === WebSocket.OPEN) refreshAll(); }, REFRESH_MS);
+</script>
+</body>
+</html>
