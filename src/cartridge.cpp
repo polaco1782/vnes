@@ -110,7 +110,7 @@ bool Cartridge::load(const std::string& filepath)
     std::cout << "  CHR ROM: " << (chr_size / 1024) << " KB";
     if (chr_size == 0) std::cout << " (using CHR RAM)";
     std::cout << std::endl;
-    std::cout << "  Mapper: " << (int)mapperNumber << " (" << mapper->getName() << ")" << std::endl;
+    std::cout << "  Mapper: " << (int)mapperNumber << " (" << getMapperName() << ")" << std::endl;
     std::cout << "  Mirroring: ";
     switch (initialMirroring) {
         case Mirroring::HORIZONTAL:   std::cout << "Horizontal"; break;
@@ -161,26 +161,21 @@ bool Cartridge::parseHeader(const INESHeader& header)
 
 Mirroring Cartridge::getMirroring() const
 {
-    if (mapper) {
-        return mapper->getMirroring();
-    }
-    return initialMirroring;
+    return mapper->getMirroring();
 }
 
 const char* Cartridge::getMapperName() const
 {
-    if (mapper) {
+    if (!mapper->unsupported) {
         return mapper->getName();
     }
-    return "Unknown";
+
+    return "UNSUPPORTED";
 }
 
 u8 Cartridge::readPrg(u16 addr) const
 {
-    if (mapper) {
-        return mapper->readPrg(addr);
-    }
-    return 0;
+    return mapper->readPrg(addr);
 }
 
 void Cartridge::writePrg(u16 addr, u8 data)
@@ -191,24 +186,17 @@ void Cartridge::writePrg(u16 addr, u8 data)
         framesSinceLastSave = 0;
     }
 
-    if (mapper) {
-        mapper->writePrg(addr, data);
-    }
+    mapper->writePrg(addr, data);
 }
 
 u8 Cartridge::readChr(u16 addr) const
 {
-    if (mapper) {
-        return mapper->readChr(addr);
-    }
-    return 0;
+    return mapper->readChr(addr);
 }
 
 void Cartridge::writeChr(u16 addr, u8 data)
 {
-    if (mapper) {
-        mapper->writeChr(addr, data);
-    }
+    mapper->writeChr(addr, data);
 }
 
 void Cartridge::signalFrameComplete()
@@ -226,28 +214,22 @@ void Cartridge::signalFrameComplete()
     }
 
     // Still signal mapper for other frame-based logic
-    if (mapper) {
-        mapper->scanline();  // Some mappers need frame timing
-    }
+    mapper->scanline();  // Some mappers need frame timing
 }
 
 // call access to mapper scanline
 void Cartridge::scanline()
 {
-    if (mapper) {
-        mapper->scanline();
-    }
+    mapper->scanline();
 }
 
 void Cartridge::clearIRQ() {
-    if (mapper) {
-        mapper->clearIrq();
-	}
+    mapper->clearIrq();
 }
 
 bool Cartridge::hasIRQ()
 {
-    if (mapper && mapper->irqPending()) {
+    if (mapper->irqPending()) {
         return true;
     }
     

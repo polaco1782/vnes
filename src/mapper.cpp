@@ -39,6 +39,10 @@ std::unique_ptr<Mapper> MapperFactory::create(u8 mapperNumber)
         default:
             std::cerr << "Warning: Unsupported mapper " << (int)mapperNumber 
                       << ", falling back to mapper 0" << std::endl;
-            return std::unique_ptr<Mapper>(new Mapper000());
+
+            auto m = std::make_unique<Mapper000>();
+            m->unsupported = true; // Mark as unsupported for special handling
+
+            return m;
     }
 }

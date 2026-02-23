@@ -22,6 +22,12 @@ struct INESHeader {
     u8 padding[5];    // Unused padding
 };
 
+struct GGCode {
+    std::string code;
+    u16 addr;
+    u8 value;
+};
+
 class Cartridge {
 public:
     Cartridge();
@@ -69,7 +75,7 @@ private:
     std::vector<u8> chr_rom;  // Character ROM (can be RAM if size=0)
     std::vector<u8> prg_ram;  // PRG RAM at $6000-$7FFF (8KB)
 
-    std::unordered_map<u32, u8> gg_codes; // GameGenie codes (address -> value)
+    std::unordered_map<u32, GGCode> gg_codes; // GameGenie codes (address -> GGCode)
     
     // The pluggable mapper
     std::unique_ptr<Mapper> mapper;

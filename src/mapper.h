@@ -62,6 +62,7 @@ public:
 
     // Mapper info
     u8 getMapperNumber() const { return mapperNum; }
+    bool unsupported = false; // Flag for unsupported mappers
     virtual const char* getName() const = 0;
 
     // Optional: scanline counter for mappers like MMC3
@@ -73,7 +74,7 @@ public:
 protected:
     u8 mapperNum;
     Mirroring mirroring;
-    
+   
     // Pointers to cartridge memory (owned by Cartridge)
     std::vector<u8>* prgRom;
     std::vector<u8>* chrRom;
