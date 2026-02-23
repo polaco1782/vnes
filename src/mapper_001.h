@@ -28,34 +28,34 @@ class Mapper001 : public Mapper {
 public:
     Mapper001();
 
-    void init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
-              std::vector<uint8_t>& prgRam, Mirroring initialMirroring) override;
+    void init(std::vector<u8>& prg, std::vector<u8>& chr,
+              std::vector<u8>& prgRam, Mirroring initialMirroring) override;
 
-    uint8_t readPrg(uint16_t addr) override;
-    void writePrg(uint16_t addr, uint8_t data) override;
+    u8 readPrg(u16 addr) override;
+    void writePrg(u16 addr, u8 data) override;
 
-    uint8_t readChr(uint16_t addr) override;
-    void writeChr(uint16_t addr, uint8_t data) override;
+    u8 readChr(u16 addr) override;
+    void writeChr(u16 addr, u8 data) override;
 
     const char* getName() const override { return "MMC1"; }
 
 private:
-    void writeRegister(uint16_t addr, uint8_t data);
+    void writeRegister(u16 addr, u8 data);
     void updateBanks();
 
     // Shift register
-    uint8_t shiftReg;
-    uint8_t shiftCount;
+    u8 shiftReg;
+    u8 shiftCount;
 
     // Internal registers
-    uint8_t ctrlReg;      // Control: mirroring, PRG/CHR modes
-    uint8_t chrBank0;     // CHR bank 0 select
-    uint8_t chrBank1;     // CHR bank 1 select
-    uint8_t prgBank;      // PRG bank select
+    u8 ctrlReg;      // Control: mirroring, PRG/CHR modes
+    u8 chrBank0;     // CHR bank 0 select
+    u8 chrBank1;     // CHR bank 1 select
+    u8 prgBank;      // PRG bank select
 
     // Computed bank offsets
-    uint32_t prgBankOffset[2];  // Two 16KB PRG banks
-    uint32_t chrBankOffset[2];  // Two 4KB CHR banks
+    u32 prgBankOffset[2];  // Two 16KB PRG banks
+    u32 chrBankOffset[2];  // Two 4KB CHR banks
 };
 
 #endif // MAPPER_001_H

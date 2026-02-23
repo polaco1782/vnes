@@ -31,23 +31,23 @@ public:
     Mapper002();
     ~Mapper002() override = default;
 
-    void init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
-              std::vector<uint8_t>& prgRam, Mirroring initialMirroring) override;
+    void init(std::vector<u8>& prg, std::vector<u8>& chr,
+              std::vector<u8>& prgRam, Mirroring initialMirroring) override;
 
-    uint8_t readPrg(uint16_t addr) override;
-    void writePrg(uint16_t addr, uint8_t data) override;
+    u8 readPrg(u16 addr) override;
+    void writePrg(u16 addr, u8 data) override;
 
-    uint8_t readChr(uint16_t addr) override;
-    void writeChr(uint16_t addr, uint8_t data) override;
+    u8 readChr(u16 addr) override;
+    void writeChr(u16 addr, u8 data) override;
 
     const char* getName() const override { return "UxROM"; }
 
 private:
     // PRG bank register
-    uint8_t prgBankSelect;
+    u8 prgBankSelect;
 
     // Computed bank offsets
-    uint32_t prgBankOffset;  // Switchable 16KB bank at $8000
+    u32 prgBankOffset;  // Switchable 16KB bank at $8000
 };
 
 #endif // MAPPER_002_H

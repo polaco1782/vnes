@@ -5,7 +5,7 @@ Mapper000::Mapper000()
 {
 }
 
-uint8_t Mapper000::readPrg(uint16_t addr)
+u8 Mapper000::readPrg(u16 addr)
 {
     // PRG RAM at $6000-$7FFF
     if (addr >= 0x6000 && addr < 0x8000) {
@@ -19,7 +19,7 @@ uint8_t Mapper000::readPrg(uint16_t addr)
     if (addr >= 0x8000) {
         if (prgRom && !prgRom->empty()) {
             // Simple mirroring for 16KB/32KB ROMs
-            uint32_t mappedAddr = (addr - 0x8000) % prgRom->size();
+            u32 mappedAddr = (addr - 0x8000) % prgRom->size();
             return (*prgRom)[mappedAddr];
         }
     }
@@ -27,7 +27,7 @@ uint8_t Mapper000::readPrg(uint16_t addr)
     return 0;
 }
 
-void Mapper000::writePrg(uint16_t addr, uint8_t data)
+void Mapper000::writePrg(u16 addr, u8 data)
 {
     // PRG RAM at $6000-$7FFF
     if (addr >= 0x6000 && addr < 0x8000) {
@@ -38,7 +38,7 @@ void Mapper000::writePrg(uint16_t addr, uint8_t data)
     // PRG ROM writes are ignored for mapper 0
 }
 
-uint8_t Mapper000::readChr(uint16_t addr)
+u8 Mapper000::readChr(u16 addr)
 {
     if (chrRom && !chrRom->empty() && addr < 0x2000) {
         return (*chrRom)[addr % chrRom->size()];
@@ -46,7 +46,7 @@ uint8_t Mapper000::readChr(uint16_t addr)
     return 0;
 }
 
-void Mapper000::writeChr(uint16_t addr, uint8_t data)
+void Mapper000::writeChr(u16 addr, u8 data)
 {
     // CHR RAM is writable (when chr_rom_size == 0 in header)
     if (chrRom && !chrRom->empty() && addr < 0x2000) {

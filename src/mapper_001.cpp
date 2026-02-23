@@ -15,8 +15,8 @@ Mapper001::Mapper001()
     chrBankOffset[1] = 0;
 }
 
-void Mapper001::init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
-                     std::vector<uint8_t>& ram, Mirroring initialMirroring)
+void Mapper001::init(std::vector<u8>& prg, std::vector<u8>& chr,
+                     std::vector<u8>& ram, Mirroring initialMirroring)
 {
     Mapper::init(prg, chr, ram, initialMirroring);
 
@@ -30,12 +30,12 @@ void Mapper001::init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
 
     // MMC1 defaults: first 16KB at $8000, last 16KB at $C000
     prgBankOffset[0] = 0;
-    prgBankOffset[1] = prgRom->size() - PRG_ROM_UNIT;
+    prgBankOffset[1] = static_cast<u32>(prgRom->size() - PRG_ROM_UNIT);
     chrBankOffset[0] = 0;
     chrBankOffset[1] = CHR_BANK_4K;
 }
 
-uint8_t Mapper001::readPrg(uint16_t addr)
+u8 Mapper001::readPrg(u16 addr)
 {
     // PRG RAM at $6000-$7FFF
     if (addr >= 0x6000 && addr < 0x8000) {
@@ -59,7 +59,7 @@ uint8_t Mapper001::readPrg(uint16_t addr)
     return 0;
 }
 
-void Mapper001::writePrg(uint16_t addr, uint8_t data)
+void Mapper001::writePrg(u16 addr, u8 data)
 {
     // PRG RAM at $6000-$7FFF
     if (addr >= 0x6000 && addr < 0x8000) {
@@ -75,7 +75,7 @@ void Mapper001::writePrg(uint16_t addr, uint8_t data)
     }
 }
 
-void Mapper001::writeRegister(uint16_t addr, uint8_t data)
+void Mapper001::writeRegister(u16 addr, u8 data)
 {
     // Bit 7 set = reset shift register
     if (data & 0x80) {
@@ -92,7 +92,7 @@ void Mapper001::writeRegister(uint16_t addr, uint8_t data)
 
     // After 5 writes, transfer to internal register
     if (shiftCount == 5) {
-        uint8_t value = shiftReg;
+        u8 value = shiftReg;
 
         // Select register based on address
         if (addr < 0xA000) {
@@ -130,18 +130,18 @@ void Mapper001::writeRegister(uint16_t addr, uint8_t data)
 
 void Mapper001::updateBanks()
 {
-    uint32_t prgBankCount = prgRom->size() / PRG_ROM_UNIT;
-    uint32_t chrBankCount = chrRom->size() / CHR_BANK_4K;
+    u32 prgBankCount = static_cast<u32>(prgRom->size() / PRG_ROM_UNIT);
+    u32 chrBankCount = static_cast<u32>(chrRom->size() / CHR_BANK_4K);
 
     // PRG ROM bank mode (bits 2-3 of control register)
-    uint8_t prgMode = (ctrlReg >> 2) & 0x03;
+    u8 prgMode = (ctrlReg >> 2) & 0x03;
 
     switch (prgMode) {
         case 0:
         case 1:
             // 32KB mode: switch both banks together, ignore low bit
             {
-                uint32_t bank = (prgBank & 0x0E) % prgBankCount;
+                u32 bank = (prgBank & 0x0E) % prgBankCount;
                 prgBankOffset[0] = bank * PRG_ROM_UNIT;
                 prgBankOffset[1] = (bank + 1) * PRG_ROM_UNIT;
             }
@@ -167,13 +167,13 @@ void Mapper001::updateBanks()
         chrBankOffset[1] = (chrBank1 % chrBankCount) * CHR_BANK_4K;
     } else {
         // 8KB mode: switch 8KB at a time, ignore low bit of bank 0
-        uint32_t bank = (chrBank0 & 0x1E) % chrBankCount;
+        u32 bank = (chrBank0 & 0x1E) % chrBankCount;
         chrBankOffset[0] = bank * CHR_BANK_4K;
         chrBankOffset[1] = (bank + 1) * CHR_BANK_4K;
     }
 }
 
-uint8_t Mapper001::readChr(uint16_t addr)
+u8 Mapper001::readChr(u16 addr)
 {
     if (!chrRom || chrRom->empty()) return 0;
 
@@ -185,16 +185,16 @@ uint8_t Mapper001::readChr(uint16_t addr)
     }
 }
 
-void Mapper001::writeChr(uint16_t addr, uint8_t data)
+void Mapper001::writeChr(u16 addr, u8 data)
 {
     // CHR RAM is writable
     if (!chrRom || chrRom->empty()) return;
 
     if (addr < 0x1000) {
-        uint32_t mappedAddr = (chrBankOffset[0] + addr) % chrRom->size();
+        u32 mappedAddr = (chrBankOffset[0] + addr) % chrRom->size();
         (*chrRom)[mappedAddr] = data;
     } else {
-        uint32_t mappedAddr = (chrBankOffset[1] + (addr - 0x1000)) % chrRom->size();
+        u32 mappedAddr = (chrBankOffset[1] + (addr - 0x1000)) % chrRom->size();
         (*chrRom)[mappedAddr] = data;
     }
 }

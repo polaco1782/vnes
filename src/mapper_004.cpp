@@ -22,8 +22,8 @@ Mapper004::Mapper004()
     }
 }
 
-void Mapper004::init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
-                     std::vector<uint8_t>& ram, Mirroring initialMirroring)
+void Mapper004::init(std::vector<u8>& prg, std::vector<u8>& chr,
+                     std::vector<u8>& ram, Mirroring initialMirroring)
 {
     Mapper::init(prg, chr, ram, initialMirroring);
 
@@ -47,9 +47,9 @@ void Mapper004::init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
 
 void Mapper004::updatePrgBanks()
 {
-    uint32_t prgBankCount = prgRom->size() / PRG_BANK_8K;
-    uint32_t lastBank = prgBankCount - 1;
-    uint32_t secondToLast = prgBankCount - 2;
+    u32 prgBankCount = static_cast<u32>(prgRom->size() / PRG_BANK_8K);
+    u32 lastBank = prgBankCount - 1;
+    u32 secondToLast = prgBankCount - 2;
 
     // PRG bank mode (bit 6 of bank select)
     if (bankSelect & 0x40) {
@@ -71,7 +71,7 @@ void Mapper004::updateChrBanks()
 {
     if (!chrRom || chrRom->empty()) return;
 
-    uint32_t chrBankCount = chrRom->size() / CHR_BANK_1K;
+    u32 chrBankCount = static_cast<u32>(chrRom->size() / CHR_BANK_1K);
     if (chrBankCount == 0) return;
 
     // CHR A12 inversion (bit 7 of bank select)
@@ -82,8 +82,8 @@ void Mapper004::updateChrBanks()
         chrBankOffset[2] = (bankRegisters[4] % chrBankCount) * CHR_BANK_1K;
         chrBankOffset[3] = (bankRegisters[5] % chrBankCount) * CHR_BANK_1K;
         // 2KB banks (ignore low bit)
-        uint8_t r0 = bankRegisters[0] & 0xFE;
-        uint8_t r1 = bankRegisters[1] & 0xFE;
+        u8 r0 = bankRegisters[0] & 0xFE;
+        u8 r1 = bankRegisters[1] & 0xFE;
         chrBankOffset[4] = (r0 % chrBankCount) * CHR_BANK_1K;
         chrBankOffset[5] = ((r0 + 1) % chrBankCount) * CHR_BANK_1K;
         chrBankOffset[6] = (r1 % chrBankCount) * CHR_BANK_1K;
@@ -91,8 +91,8 @@ void Mapper004::updateChrBanks()
     } else {
         // Mode 0: 2KB banks at $0000-$0FFF, 1KB banks at $1000-$1FFF
         // 2KB banks (ignore low bit)
-        uint8_t r0 = bankRegisters[0] & 0xFE;
-        uint8_t r1 = bankRegisters[1] & 0xFE;
+        u8 r0 = bankRegisters[0] & 0xFE;
+        u8 r1 = bankRegisters[1] & 0xFE;
         chrBankOffset[0] = (r0 % chrBankCount) * CHR_BANK_1K;
         chrBankOffset[1] = ((r0 + 1) % chrBankCount) * CHR_BANK_1K;
         chrBankOffset[2] = (r1 % chrBankCount) * CHR_BANK_1K;
@@ -105,7 +105,7 @@ void Mapper004::updateChrBanks()
     }
 }
 
-uint8_t Mapper004::readPrg(uint16_t addr)
+u8 Mapper004::readPrg(u16 addr)
 {
     // PRG RAM at $6000-$7FFF
     if (addr >= 0x6000 && addr < 0x8000) {
@@ -120,14 +120,14 @@ uint8_t Mapper004::readPrg(uint16_t addr)
         if (!prgRom || prgRom->empty()) return 0;
 
         int bank = (addr - 0x8000) / PRG_BANK_8K;
-        uint32_t offset = (addr - 0x8000) % PRG_BANK_8K;
+        u32 offset = (addr - 0x8000) % PRG_BANK_8K;
         return (*prgRom)[(prgBankOffset[bank] + offset) % prgRom->size()];
     }
 
     return 0;
 }
 
-void Mapper004::writePrg(uint16_t addr, uint8_t data)
+void Mapper004::writePrg(u16 addr, u8 data)
 {
     // PRG RAM at $6000-$7FFF
     if (addr >= 0x6000 && addr < 0x8000) {
@@ -150,7 +150,7 @@ void Mapper004::writePrg(uint16_t addr, uint8_t data)
                 updateChrBanks();
             } else {
                 // Bank data ($8001, $8003, etc.)
-                uint8_t reg = bankSelect & 0x07;
+                u8 reg = bankSelect & 0x07;
                 bankRegisters[reg] = data;
                 if (reg < 6) {
                     updateChrBanks();
@@ -210,23 +210,23 @@ void Mapper004::scanline()
     }
 }
 
-uint8_t Mapper004::readChr(uint16_t addr)
+u8 Mapper004::readChr(u16 addr)
 {
     if (!chrRom || chrRom->empty()) return 0;
 
     // Each 1KB bank
     int bank = addr / CHR_BANK_1K;
-    uint32_t offset = addr % CHR_BANK_1K;
+    u32 offset = addr % CHR_BANK_1K;
     return (*chrRom)[(chrBankOffset[bank] + offset) % chrRom->size()];
 }
 
-void Mapper004::writeChr(uint16_t addr, uint8_t data)
+void Mapper004::writeChr(u16 addr, u8 data)
 {
     // CHR RAM is writable
     if (!chrRom || chrRom->empty()) return;
 
     int bank = addr / CHR_BANK_1K;
-    uint32_t offset = addr % CHR_BANK_1K;
-    uint32_t mappedAddr = (chrBankOffset[bank] + offset) % chrRom->size();
+    u32 offset = addr % CHR_BANK_1K;
+    u32 mappedAddr = (chrBankOffset[bank] + offset) % chrRom->size();
     (*chrRom)[mappedAddr] = data;
 }

@@ -43,14 +43,14 @@ public:
     Mapper009();
     ~Mapper009() override = default;
 
-    void init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
-              std::vector<uint8_t>& prgRam, Mirroring initialMirroring) override;
+    void init(std::vector<u8>& prg, std::vector<u8>& chr,
+              std::vector<u8>& prgRam, Mirroring initialMirroring) override;
 
-    uint8_t readPrg(uint16_t addr) override;
-    void writePrg(uint16_t addr, uint8_t data) override;
+    u8 readPrg(u16 addr) override;
+    void writePrg(u16 addr, u8 data) override;
 
-    uint8_t readChr(uint16_t addr) override;
-    void writeChr(uint16_t addr, uint8_t data) override;
+    u8 readChr(u16 addr) override;
+    void writeChr(u16 addr, u8 data) override;
 
     const char* getName() const override { return "MMC2"; }
 
@@ -58,21 +58,21 @@ private:
     void updateChrBanks();
 
     // PRG bank register
-    uint8_t prgBankSelect;
+    u8 prgBankSelect;
 
     // CHR bank registers (two banks for each latch state)
-    uint8_t chrBank0FD;   // CHR $0000-$0FFF when latch 0 = $FD
-    uint8_t chrBank0FE;   // CHR $0000-$0FFF when latch 0 = $FE
-    uint8_t chrBank1FD;   // CHR $1000-$1FFF when latch 1 = $FD
-    uint8_t chrBank1FE;   // CHR $1000-$1FFF when latch 1 = $FE
+    u8 chrBank0FD;   // CHR $0000-$0FFF when latch 0 = $FD
+    u8 chrBank0FE;   // CHR $0000-$0FFF when latch 0 = $FE
+    u8 chrBank1FD;   // CHR $1000-$1FFF when latch 1 = $FD
+    u8 chrBank1FE;   // CHR $1000-$1FFF when latch 1 = $FE
 
     // Latches (triggered by specific tile patterns)
     bool latch0;  // false = $FD, true = $FE
     bool latch1;  // false = $FD, true = $FE
 
     // Computed bank offsets
-    uint32_t prgBankOffset;     // For the switchable 8KB bank at $8000
-    uint32_t chrBankOffset[2];  // Two 4KB CHR banks
+    u32 prgBankOffset;     // For the switchable 8KB bank at $8000
+    u32 chrBankOffset[2];  // Two 4KB CHR banks
 };
 
 #endif // MAPPER_009_H

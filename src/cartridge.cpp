@@ -53,7 +53,7 @@ bool Cartridge::load(const std::string& filepath)
     }
 
     // Read PRG ROM
-    uint32_t prg_size = header.prg_rom_size * PRG_ROM_UNIT;
+    u32 prg_size = header.prg_rom_size * PRG_ROM_UNIT;
     prg_rom.resize(prg_size);
     file.read(reinterpret_cast<char*>(prg_rom.data()), prg_size);
     if (!file) {
@@ -62,7 +62,7 @@ bool Cartridge::load(const std::string& filepath)
     }
 
     // Read CHR ROM (or allocate CHR RAM if size is 0)
-    uint32_t chr_size = header.chr_rom_size * CHR_ROM_UNIT;
+    u32 chr_size = header.chr_rom_size * CHR_ROM_UNIT;
     if (chr_size > 0) {
         chr_rom.resize(chr_size);
         file.read(reinterpret_cast<char*>(chr_rom.data()), chr_size);
@@ -175,7 +175,7 @@ const char* Cartridge::getMapperName() const
     return "Unknown";
 }
 
-uint8_t Cartridge::readPrg(uint16_t addr) const
+u8 Cartridge::readPrg(u16 addr) const
 {
     if (mapper) {
         return mapper->readPrg(addr);
@@ -183,7 +183,7 @@ uint8_t Cartridge::readPrg(uint16_t addr) const
     return 0;
 }
 
-void Cartridge::writePrg(uint16_t addr, uint8_t data)
+void Cartridge::writePrg(u16 addr, u8 data)
 {
     // Check if writing to PRG RAM for battery-backed save detection
     if (battery && addr >= 0x6000 && addr < 0x8000) {
@@ -196,7 +196,7 @@ void Cartridge::writePrg(uint16_t addr, uint8_t data)
     }
 }
 
-uint8_t Cartridge::readChr(uint16_t addr) const
+u8 Cartridge::readChr(u16 addr) const
 {
     if (mapper) {
         return mapper->readChr(addr);
@@ -204,7 +204,7 @@ uint8_t Cartridge::readChr(uint16_t addr) const
     return 0;
 }
 
-void Cartridge::writeChr(uint16_t addr, uint8_t data)
+void Cartridge::writeChr(u16 addr, u8 data)
 {
     if (mapper) {
         mapper->writeChr(addr, data);

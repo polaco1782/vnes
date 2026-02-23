@@ -11,15 +11,15 @@
 
 // iNES Header (16 bytes)
 struct INESHeader {
-    uint8_t magic[4];      // "NES" + 0x1A
-    uint8_t prg_rom_size;  // PRG ROM size in 16KB units
-    uint8_t chr_rom_size;  // CHR ROM size in 8KB units
-    uint8_t flags6;        // Mapper, mirroring, battery, trainer
-    uint8_t flags7;        // Mapper, VS/Playchoice, NES 2.0
-    uint8_t flags8;        // PRG-RAM size (rarely used)
-    uint8_t flags9;        // TV system (rarely used)
-    uint8_t flags10;       // TV system, PRG-RAM (unofficial)
-    uint8_t padding[5];    // Unused padding
+    u8 magic[4];      // "NES" + 0x1A
+    u8 prg_rom_size;  // PRG ROM size in 16KB units
+    u8 chr_rom_size;  // CHR ROM size in 8KB units
+    u8 flags6;        // Mapper, mirroring, battery, trainer
+    u8 flags7;        // Mapper, VS/Playchoice, NES 2.0
+    u8 flags8;        // PRG-RAM size (rarely used)
+    u8 flags9;        // TV system (rarely used)
+    u8 flags10;       // TV system, PRG-RAM (unofficial)
+    u8 padding[5];    // Unused padding
 };
 
 class Cartridge {
@@ -32,23 +32,23 @@ public:
 
     // Getters
     bool isLoaded() const { return loaded; }
-    uint8_t getMapperNumber() const { return mapperNumber; }
+    u8 getMapperNumber() const { return mapperNumber; }
     Mirroring getMirroring() const;
     bool hasBattery() const { return battery; }
     const char* getMapperName() const;
     Mapper* getMapper() const { return mapper.get(); }
 
     // ROM data access (for debugging/inspection)
-    const std::vector<uint8_t>& getPrgRom() const { return prg_rom; }
-    const std::vector<uint8_t>& getChrRom() const { return chr_rom; }
+    const std::vector<u8>& getPrgRom() const { return prg_rom; }
+    const std::vector<u8>& getChrRom() const { return chr_rom; }
 
     // CPU interface for PRG space ($6000-$FFFF)
-    uint8_t readPrg(uint16_t addr) const;
-    void writePrg(uint16_t addr, uint8_t data);
+    u8 readPrg(u16 addr) const;
+    void writePrg(u16 addr, u8 data);
     
     // PPU interface for CHR space ($0000-$1FFF)
-    uint8_t readChr(uint16_t addr) const;
-    void writeChr(uint16_t addr, uint8_t data);
+    u8 readChr(u16 addr) const;
+    void writeChr(u16 addr, u8 data);
 
 	// Mapper-specific timing (for mappers that need it, eg: MMC3)
     void Cartridge::scanline();
@@ -62,12 +62,12 @@ private:
     bool parseHeader(const INESHeader& header);
     
     bool loaded;
-    uint8_t mapperNumber;
+    u8 mapperNumber;
     bool battery;
 
-    std::vector<uint8_t> prg_rom;  // Program ROM
-    std::vector<uint8_t> chr_rom;  // Character ROM (can be RAM if size=0)
-    std::vector<uint8_t> prg_ram;  // PRG RAM at $6000-$7FFF (8KB)
+    std::vector<u8> prg_rom;  // Program ROM
+    std::vector<u8> chr_rom;  // Character ROM (can be RAM if size=0)
+    std::vector<u8> prg_ram;  // PRG RAM at $6000-$7FFF (8KB)
 
     std::unordered_map<u32, u8> gg_codes; // GameGenie codes (address -> value)
     
@@ -79,7 +79,7 @@ private:
 
     // SRAM persistence (for battery-backed carts)
     bool prgRamDirty;
-    uint32_t framesSinceLastSave;
+    u32 framesSinceLastSave;
     std::string savePath;
 };
 

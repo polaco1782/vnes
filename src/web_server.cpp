@@ -151,7 +151,7 @@ bool WebServer::processOneCommand(Bus* bus)
             crow::json::wvalue dis;
             ss << "0x" << std::hex << std::setw(4) << std::setfill('0') << cpu_ref.getPC();
             dis["pc"] = ss.str();
-            for (size_t i = 0; i < lines.size(); ++i) dis["lines"][i] = lines[i];
+            for (u32 i = 0; i < lines.size(); ++i) dis["lines"][i] = lines[i];
             out["disasm"] = std::move(dis);
             break;
         }
@@ -177,7 +177,7 @@ bool WebServer::processOneCommand(Bus* bus)
             crow::json::wvalue dis;
             ss << "0x" << std::hex << std::setw(4) << std::setfill('0') << cpu_ref.getPC();
             dis["pc"] = ss.str();
-            for (size_t i = 0; i < lines.size(); ++i) dis["lines"][i] = lines[i];
+            for (u32 i = 0; i < lines.size(); ++i) dis["lines"][i] = lines[i];
             out["disasm"] = std::move(dis);
             break;
         }
@@ -192,7 +192,7 @@ bool WebServer::processOneCommand(Bus* bus)
             auto lines = dbg.disassemble(cmd.addr, cmd.count <= 0 ? 10 : cmd.count);
             crow::json::wvalue dis;
             dis["pc"] = ("0x" + hexWord(cmd.addr));
-            for (size_t i = 0; i < lines.size(); ++i) dis["lines"][i] = lines[i];
+            for (u32 i = 0; i < lines.size(); ++i) dis["lines"][i] = lines[i];
             out["disasm"] = std::move(dis);
             break;
         }
@@ -316,7 +316,7 @@ void WebServer::runLoop(int port)
                 conn.send_text(std::string("{\"status\":\"queued\"}"));
             }
         })
-        .onclose([this](crow::websocket::connection& conn, const std::string& reason, uint16_t status) {
+        .onclose([this](crow::websocket::connection& conn, const std::string& reason, u16 status) {
             CROW_LOG_DEBUG << "WebSocket connection closed";
         });
 

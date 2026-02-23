@@ -22,13 +22,13 @@ enum class Mirroring {
 };
 
 // Constants
-static const uint32_t PRG_ROM_UNIT = 16384;  // 16KB
-static const uint32_t CHR_ROM_UNIT = 8192;   // 8KB
-static const uint32_t PRG_BANK_8K = 8192;    // 8KB
-static const uint32_t PRG_BANK_4K = 4096;    // 4KB
-static const uint32_t CHR_BANK_4K = 4096;    // 4KB
-static const uint32_t CHR_BANK_1K = 1024;    // 1KB
-static const uint32_t TRAINER_SIZE = 512;
+static const u32 PRG_ROM_UNIT = 16384;  // 16KB
+static const u32 CHR_ROM_UNIT = 8192;   // 8KB
+static const u32 PRG_BANK_8K = 8192;    // 8KB
+static const u32 PRG_BANK_4K = 4096;    // 4KB
+static const u32 CHR_BANK_4K = 4096;    // 4KB
+static const u32 CHR_BANK_1K = 1024;    // 1KB
+static const u32 TRAINER_SIZE = 512;
 
 /**
  * Base Mapper class - interface for all NES mappers

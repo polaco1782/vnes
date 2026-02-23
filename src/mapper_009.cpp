@@ -15,8 +15,8 @@ Mapper009::Mapper009()
     chrBankOffset[1] = 0;
 }
 
-void Mapper009::init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
-                     std::vector<uint8_t>& ram, Mirroring initialMirroring)
+void Mapper009::init(std::vector<u8>& prg, std::vector<u8>& chr,
+                     std::vector<u8>& ram, Mirroring initialMirroring)
 {
     Mapper::init(prg, chr, ram, initialMirroring);
 
@@ -36,7 +36,7 @@ void Mapper009::init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
     updateChrBanks();
 }
 
-uint8_t Mapper009::readPrg(uint16_t addr)
+u8 Mapper009::readPrg(u16 addr)
 {
     // PRG RAM at $6000-$7FFF
     if (addr >= 0x6000 && addr < 0x8000) {
@@ -50,8 +50,8 @@ uint8_t Mapper009::readPrg(uint16_t addr)
     if (addr >= 0x8000) {
         if (!prgRom || prgRom->empty()) return 0;
 
-        uint32_t prgSize = prgRom->size();
-        uint32_t bankCount = prgSize / PRG_BANK_8K;
+        u32 prgSize = static_cast<u32>(prgRom->size());
+        u32 bankCount = prgSize / PRG_BANK_8K;
 
         if (addr < 0xA000) {
             // $8000-$9FFF: Switchable bank
@@ -59,17 +59,17 @@ uint8_t Mapper009::readPrg(uint16_t addr)
         }
         else if (addr < 0xC000) {
             // $A000-$BFFF: Fixed to second-to-last bank
-            uint32_t offset = (bankCount - 3) * PRG_BANK_8K;
+            u32 offset = (bankCount - 3) * PRG_BANK_8K;
             return (*prgRom)[offset + (addr - 0xA000)];
         }
         else if (addr < 0xE000) {
             // $C000-$DFFF: Fixed to third-to-last bank
-            uint32_t offset = (bankCount - 2) * PRG_BANK_8K;
+            u32 offset = (bankCount - 2) * PRG_BANK_8K;
             return (*prgRom)[offset + (addr - 0xC000)];
         }
         else {
             // $E000-$FFFF: Fixed to last bank
-            uint32_t offset = (bankCount - 1) * PRG_BANK_8K;
+            u32 offset = (bankCount - 1) * PRG_BANK_8K;
             return (*prgRom)[offset + (addr - 0xE000)];
         }
     }
@@ -77,7 +77,7 @@ uint8_t Mapper009::readPrg(uint16_t addr)
     return 0;
 }
 
-void Mapper009::writePrg(uint16_t addr, uint8_t data)
+void Mapper009::writePrg(u16 addr, u8 data)
 {
     // PRG RAM at $6000-$7FFF
     if (addr >= 0x6000 && addr < 0x8000) {
@@ -91,7 +91,7 @@ void Mapper009::writePrg(uint16_t addr, uint8_t data)
     if (addr >= 0xA000 && addr < 0xB000) {
         // $A000-$AFFF: PRG bank select
         prgBankSelect = data & 0x0F;
-        uint32_t bankCount = prgRom->size() / PRG_BANK_8K;
+        u32 bankCount = static_cast<u32>(prgRom->size() / PRG_BANK_8K);
         prgBankOffset = (prgBankSelect % bankCount) * PRG_BANK_8K;
     }
     else if (addr >= 0xB000 && addr < 0xC000) {
@@ -124,23 +124,23 @@ void Mapper009::updateChrBanks()
 {
     if (!chrRom || chrRom->empty()) return;
 
-    uint32_t chrBankCount = chrRom->size() / CHR_BANK_4K;
+    u32 chrBankCount = static_cast<u32>(chrRom->size() / CHR_BANK_4K);
     if (chrBankCount == 0) return;
 
     // Select CHR bank 0 based on latch 0
-    uint8_t bank0 = latch0 ? chrBank0FE : chrBank0FD;
+    u8 bank0 = latch0 ? chrBank0FE : chrBank0FD;
     chrBankOffset[0] = (bank0 % chrBankCount) * CHR_BANK_4K;
 
     // Select CHR bank 1 based on latch 1
-    uint8_t bank1 = latch1 ? chrBank1FE : chrBank1FD;
+    u8 bank1 = latch1 ? chrBank1FE : chrBank1FD;
     chrBankOffset[1] = (bank1 % chrBankCount) * CHR_BANK_4K;
 }
 
-uint8_t Mapper009::readChr(uint16_t addr)
+u8 Mapper009::readChr(u16 addr)
 {
     if (!chrRom || chrRom->empty()) return 0;
 
-    uint8_t data;
+    u8 data;
 
     if (addr < 0x1000) {
         // CHR bank 0: $0000-$0FFF
@@ -148,7 +148,7 @@ uint8_t Mapper009::readChr(uint16_t addr)
 
         // Check for latch trigger tiles
         // The latch changes AFTER the data is read
-        uint16_t tileAddr = addr & 0x0FF8;  // Tile address (ignore fine Y)
+        u16 tileAddr = addr & 0x0FF8;  // Tile address (ignore fine Y)
         if (tileAddr == 0x0FD8) {
             latch0 = false;  // $FD tile
             updateChrBanks();
@@ -163,7 +163,7 @@ uint8_t Mapper009::readChr(uint16_t addr)
         data = (*chrRom)[(chrBankOffset[1] + (addr - 0x1000)) % chrRom->size()];
 
         // Check for latch trigger tiles
-        uint16_t tileAddr = addr & 0x0FF8;
+        u16 tileAddr = addr & 0x0FF8;
         if (tileAddr == 0x1FD8) {
             latch1 = false;  // $FD tile
             updateChrBanks();
@@ -177,7 +177,7 @@ uint8_t Mapper009::readChr(uint16_t addr)
     return data;
 }
 
-void Mapper009::writeChr(uint16_t addr, uint8_t data)
+void Mapper009::writeChr(u16 addr, u8 data)
 {
     // MMC2 uses CHR ROM, which is not writable
     // But we include this for completeness in case of CHR RAM variants

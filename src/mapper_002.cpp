@@ -7,8 +7,8 @@ Mapper002::Mapper002()
 {
 }
 
-void Mapper002::init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
-                     std::vector<uint8_t>& ram, Mirroring initialMirroring)
+void Mapper002::init(std::vector<u8>& prg, std::vector<u8>& chr,
+                     std::vector<u8>& ram, Mirroring initialMirroring)
 {
     Mapper::init(prg, chr, ram, initialMirroring);
 
@@ -19,7 +19,7 @@ void Mapper002::init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
     prgBankOffset = 0;
 }
 
-uint8_t Mapper002::readPrg(uint16_t addr)
+u8 Mapper002::readPrg(u16 addr)
 {
     // PRG RAM at $6000-$7FFF
     if (addr >= 0x6000 && addr < 0x8000) {
@@ -38,7 +38,7 @@ uint8_t Mapper002::readPrg(uint16_t addr)
             return (*prgRom)[prgBankOffset + (addr - 0x8000)];
         } else {
             // $C000-$FFFF: Fixed to last 16KB bank
-            uint32_t lastBankOffset = prgRom->size() - PRG_ROM_UNIT;
+            u32 lastBankOffset = static_cast<u32>(prgRom->size() - PRG_ROM_UNIT);
             return (*prgRom)[lastBankOffset + (addr - 0xC000)];
         }
     }
@@ -46,7 +46,7 @@ uint8_t Mapper002::readPrg(uint16_t addr)
     return 0;
 }
 
-void Mapper002::writePrg(uint16_t addr, uint8_t data)
+void Mapper002::writePrg(u16 addr, u8 data)
 {
     // PRG RAM at $6000-$7FFF
     if (addr >= 0x6000 && addr < 0x8000) {
@@ -59,12 +59,12 @@ void Mapper002::writePrg(uint16_t addr, uint8_t data)
     // Bank select register at $8000-$FFFF
     if (addr >= 0x8000) {
         prgBankSelect = data & 0x0F;  // 4 bits for bank selection
-        uint32_t bankCount = prgRom->size() / PRG_ROM_UNIT;
+        u32 bankCount = static_cast<u32>(prgRom->size()) / PRG_ROM_UNIT;
         prgBankOffset = (prgBankSelect % bankCount) * PRG_ROM_UNIT;
     }
 }
 
-uint8_t Mapper002::readChr(uint16_t addr)
+u8 Mapper002::readChr(u16 addr)
 {
     if (chrRom && !chrRom->empty() && addr < 0x2000) {
         return (*chrRom)[addr % chrRom->size()];
@@ -72,7 +72,7 @@ uint8_t Mapper002::readChr(uint16_t addr)
     return 0;
 }
 
-void Mapper002::writeChr(uint16_t addr, uint8_t data)
+void Mapper002::writeChr(u16 addr, u8 data)
 {
     // CHR RAM is writable (when chr_rom_size == 0 in header)
     if (chrRom && !chrRom->empty() && addr < 0x2000) {

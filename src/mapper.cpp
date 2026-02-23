@@ -5,7 +5,7 @@
 #include "mapper_004.h"
 #include "mapper_009.h"
 
-Mapper::Mapper(uint8_t mapperNumber)
+Mapper::Mapper(u8 mapperNumber)
     : mapperNum(mapperNumber)
     , mirroring(Mirroring::HORIZONTAL)
     , prgRom(nullptr)
@@ -14,8 +14,8 @@ Mapper::Mapper(uint8_t mapperNumber)
 {
 }
 
-void Mapper::init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
-                  std::vector<uint8_t>& ram, Mirroring initialMirroring)
+void Mapper::init(std::vector<u8>& prg, std::vector<u8>& chr,
+                  std::vector<u8>& ram, Mirroring initialMirroring)
 {
     prgRom = &prg;
     chrRom = &chr;
@@ -23,7 +23,7 @@ void Mapper::init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
     mirroring = initialMirroring;
 }
 
-std::unique_ptr<Mapper> MapperFactory::create(uint8_t mapperNumber)
+std::unique_ptr<Mapper> MapperFactory::create(u8 mapperNumber)
 {
     switch (mapperNumber) {
         case 0:

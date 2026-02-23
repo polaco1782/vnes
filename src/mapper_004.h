@@ -42,14 +42,14 @@ public:
     Mapper004();
     ~Mapper004() override = default;
 
-    void init(std::vector<uint8_t>& prg, std::vector<uint8_t>& chr,
-              std::vector<uint8_t>& prgRam, Mirroring initialMirroring) override;
+    void init(std::vector<u8>& prg, std::vector<u8>& chr,
+              std::vector<u8>& prgRam, Mirroring initialMirroring) override;
 
-    uint8_t readPrg(uint16_t addr) override;
-    void writePrg(uint16_t addr, uint8_t data) override;
+    u8 readPrg(u16 addr) override;
+    void writePrg(u16 addr, u8 data) override;
 
-    uint8_t readChr(uint16_t addr) override;
-    void writeChr(uint16_t addr, uint8_t data) override;
+    u8 readChr(u16 addr) override;
+    void writeChr(u16 addr, u8 data) override;
 
     // Scanline counter for IRQ
     void scanline() override;
@@ -65,27 +65,27 @@ private:
     void updateChrBanks();
 
     // Bank select register ($8000)
-    uint8_t bankSelect;      // Bits 0-2: Bank register to update
+    u8 bankSelect;      // Bits 0-2: Bank register to update
                              // Bit 6: PRG ROM bank mode
                              // Bit 7: CHR A12 inversion
 
     // Bank data registers (selected via bankSelect bits 0-2)
-    uint8_t bankRegisters[8];  // R0-R7 bank registers
+    u8 bankRegisters[8];  // R0-R7 bank registers
 
     // PRG RAM protect ($A001)
     bool prgRamEnable;
     bool prgRamWriteProtect;
 
     // IRQ registers
-    uint8_t irqLatch;        // Value to reload counter with
-    uint8_t irqCounter;      // Current counter value
+    u8 irqLatch;        // Value to reload counter with
+    u8 irqCounter;      // Current counter value
     bool irqReload;          // Flag to reload counter on next scanline
     bool irqEnabled;         // IRQ enable flag
     bool irqPendingFlag;     // IRQ pending flag
 
     // Computed bank offsets
-    uint32_t prgBankOffset[4];  // Four 8KB PRG banks
-    uint32_t chrBankOffset[8];  // Eight 1KB CHR banks
+    u32 prgBankOffset[4];  // Four 8KB PRG banks
+    u32 chrBankOffset[8];  // Eight 1KB CHR banks
 };
 
 #endif // MAPPER_004_H

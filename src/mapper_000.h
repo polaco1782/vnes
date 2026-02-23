@@ -24,11 +24,11 @@ public:
     Mapper000();
     ~Mapper000() override = default;
 
-    uint8_t readPrg(uint16_t addr) override;
-    void writePrg(uint16_t addr, uint8_t data) override;
+    u8 readPrg(u16 addr) override;
+    void writePrg(u16 addr, u8 data) override;
 
-    uint8_t readChr(uint16_t addr) override;
-    void writeChr(uint16_t addr, uint8_t data) override;
+    u8 readChr(u16 addr) override;
+    void writeChr(u16 addr, u8 data) override;
 
     const char* getName() const override { return "NROM"; }
 };
