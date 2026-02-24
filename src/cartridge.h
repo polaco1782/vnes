@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include <unordered_map>
+#include <array>
 #include "mapper.h"
 #include "types.h"
 
@@ -20,12 +20,6 @@ struct INESHeader {
     u8 flags9;        // TV system (rarely used)
     u8 flags10;       // TV system, PRG-RAM (unofficial)
     u8 padding[5];    // Unused padding
-};
-
-struct GGCode {
-    std::string code;
-    u16 addr;
-    u8 value;
 };
 
 class Cartridge {
@@ -57,9 +51,12 @@ public:
     void writeChr(u16 addr, u8 data);
 
 	// Mapper-specific timing (for mappers that need it, eg: MMC3)
-    void Cartridge::scanline();
-    void Cartridge::clearIRQ();
-    bool Cartridge::hasIRQ();
+    void scanline();
+    void clearIRQ();
+    bool hasIRQ();
+
+    bool addGGCode(const std::string& code);
+    void removeGGCode(const std::string& code);
 
     void signalFrameComplete();
     void flushSRAM();
@@ -75,7 +72,19 @@ private:
     std::vector<u8> chr_rom;  // Character ROM (can be RAM if size=0)
     std::vector<u8> prg_ram;  // PRG RAM at $6000-$7FFF (8KB)
 
-    std::unordered_map<u32, GGCode> gg_codes; // GameGenie codes (address -> GGCode)
+    // Active Game Genie entries. We keep a small dense array of at most
+    // MAX_GG_CODES entries and a `gg_count` to avoid scanning when empty.
+    static const size_t MAX_GG_CODES = 16;
+    uint8_t gg_count;
+    struct GGActiveEntry {
+        std::string code; // human-readable code string (optional)
+        u16 addr = 0;
+        u8 value = 0;
+        u8 compare = 0;
+        bool has_compare = false;
+        u32 hits = 0;
+    };
+    std::array<GGActiveEntry, MAX_GG_CODES> gg_active_entries;
     
     // The pluggable mapper
     std::unique_ptr<Mapper> mapper;

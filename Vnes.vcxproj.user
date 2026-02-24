@@ -3,5 +3,6 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LocalDebuggerCommandArguments>"C:\Best NES Games\Mario\Super Mario Bros. 2 (USA) (Rev 1).nes"</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerCommandArgumentsHistory>"C:\Best NES Games\Mario\Super Mario Bros. 2 (USA) (Rev 1).nes";"aaaaaaaaaaaaa"|"C:\Best NES Games\Mario\Super Mario Bros. 2 (USA) (Rev 1).nes" "aaaaaaaaaaa"|"C:\Best NES Games\Mario\Super Mario Bros. (World).nes"|"C:\Best NES Games\Mario\Super Mario Bros. 2 (USA) (Rev 1).nes"|</LocalDebuggerCommandArgumentsHistory>
   </PropertyGroup>
 </Project>

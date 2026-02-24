@@ -54,8 +54,8 @@ int main(int argc, char* argv[])
     std::cout << "\nSystem initialized!" << std::endl;
     std::cout << "CPU PC: 0x" << std::hex << bus.cpu.getPC() << std::dec << std::endl;
 
-    // Start web server (provides /cpu endpoint)
-    WebServer web(&bus);
+    // Start web server
+    WebServer web;
     web.start(18080);
 
     // Normal execution with display
@@ -114,9 +114,9 @@ int main(int argc, char* argv[])
             // Process any pending web commands queued by websocket handlers
             // Process multiple commands to avoid backlog but limit to avoid long stalls
             for (int i = 0; i < 100; ++i) {
-                if (!web.processOneCommand(&bus)) break;
+                if (!web.processOneCommand(&bus, &cartridge)) break;
             }
-            
+
             // Update display
             display.update(bus.ppu.getFramebuffer());
         }

@@ -334,12 +334,6 @@ function gamegenieWrite() {
     return;
   }
   
-  // Validate NES GameGenie format (6 or 8 hex characters, no hyphens)
-  if (!/^[A-F0-9]{6}$/.test(ggcode) && !/^[A-F0-9]{8}$/.test(ggcode)) {
-    document.getElementById('gg-message').textContent = ggcode + ' is not a valid Game Genie code format';
-    //return;
-  }
-  
   sendCommand({cmd: 'gamegenie', code: ggcode}).then(function(data) {
     if (data.error) {
       document.getElementById('gg-message').textContent = data.error;

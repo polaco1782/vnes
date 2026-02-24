@@ -15,7 +15,7 @@
 
 class WebServer {
 public:
-    explicit WebServer(Bus* bus);
+    explicit WebServer();
     ~WebServer();
 
     // Start server on given port (default 18080)
@@ -40,6 +40,7 @@ public:
         u16 addr = 0;
         u8 value = 0;
         int count = 0;
+        std::string ggcode;
         // promise to deliver JSON string result back to websocket handler
         std::shared_ptr<std::promise<std::string>> resp;
     };
@@ -48,10 +49,11 @@ public:
     void pushCommand(Command cmd);
 
     // Called from main emulation thread to process at least one pending command. Returns true if a command was processed.
-    bool processOneCommand(Bus* bus);
+    bool processOneCommand(Bus* bus, Cartridge* cart);
 
 private:
     Bus* bus;
+    Cartridge* cartridge;
     std::thread server_thread;
     std::atomic<bool> running;
     Debugger* debugger_;

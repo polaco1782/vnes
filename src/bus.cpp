@@ -95,6 +95,7 @@ void Bus::logAccess(MemAccess::Type type, u16 addr, u8 value)
 void Bus::connect(Cartridge* cart)
 {
     cartridge = cart;
+    cpu.connect(this);
     ppu.connect(this, cart);
     apu.connect(this);
 }

@@ -9,20 +9,14 @@
 #include <iomanip>
 #include <fstream>
 
-// Helper to convert u8 to hex string
-static std::string hexByte(u8 val)
+WebServer::WebServer()
+    : running(false), debugger_(nullptr), bus(nullptr), cartridge(nullptr)
 {
-    std::ostringstream ss;
-    ss << std::hex << std::uppercase << std::setfill('0') << std::setw(2) << (int)val;
-    return ss.str();
 }
 
-// Helper to convert u16 to hex string
-static std::string hexWord(u16 val)
+WebServer::~WebServer()
 {
-    std::ostringstream ss;
-    ss << std::hex << std::uppercase << std::setfill('0') << std::setw(4) << val;
-    return ss.str();
+    stop();
 }
 
 // Get memory region name
@@ -34,56 +28,6 @@ static std::string getMemoryRegion(u16 addr)
     if (addr < 0x6000) return "EXP";
     if (addr < 0x8000) return "SRAM";
     return "ROM";
-}
-
-// GameGenie code decoding for NES
-// NES GameGenie formats: 
-// - 6 characters: XXXXXX (address: first 3 chars, value: last 3 chars)
-// - 8 characters: XXXXXXXX (address: first 4 chars, value: last 4 chars)
-// Returns true if decoded successfully, fills addr and value
-static bool decodeGameGenie(const std::string& code, u16& addr, u8& value)
-{
-    // Convert to uppercase and remove any hyphens or spaces
-    std::string clean;
-    for (char c : code) {
-        if (c != '-' && c != ' ') {
-            if (c >= 'a' && c <= 'f') clean += c - 32; // to uppercase
-            else if (c >= 'A' && c <= 'F' || c >= '0' && c <= '9') clean += c;
-            else return false; // invalid character
-        }
-    }
-    
-    // NES GameGenie codes are either 6 or 8 characters
-    if (clean.length() != 6 && clean.length() != 8) {
-        return false;
-    }
-    
-    // Parse based on length
-    try {
-        if (clean.length() == 6) {
-            // 6-char format: XXXXXX (address: first 3, value: last 3)
-            addr = (u16)std::stoul(clean.substr(0, 3), nullptr, 16);
-            value = (u8)std::stoul(clean.substr(3, 3), nullptr, 16);
-        } else {
-            // 8-char format: XXXXXXXX (address: first 4, value: last 4)
-            addr = (u16)std::stoul(clean.substr(0, 4), nullptr, 16);
-            value = (u8)std::stoul(clean.substr(4, 4), nullptr, 16);
-        }
-    } catch (...) {
-        return false;
-    }
-    
-    return true;
-}
-
-WebServer::WebServer(Bus* b)
-    : bus(b), running(false), debugger_(nullptr)
-{
-}
-
-WebServer::~WebServer()
-{
-    stop();
 }
 
 void WebServer::start(int port)
@@ -108,7 +52,7 @@ void WebServer::pushCommand(Command cmd)
     cmd_cv_.notify_one();
 }
 
-bool WebServer::processOneCommand(Bus* bus)
+bool WebServer::processOneCommand(Bus* bus, Cartridge* cart)
 {
     Command cmd;
     {
@@ -147,6 +91,7 @@ bool WebServer::processOneCommand(Bus* bus)
             // Add disassembly around current PC
             Debugger dbg;
             dbg.connect(bus);
+
             auto lines = dbg.disassemble(cpu_ref.getPC(), 15);
             crow::json::wvalue dis;
             ss << "0x" << std::hex << std::setw(4) << std::setfill('0') << cpu_ref.getPC();
@@ -191,7 +136,7 @@ bool WebServer::processOneCommand(Bus* bus)
             dbg.connect(bus);
             auto lines = dbg.disassemble(cmd.addr, cmd.count <= 0 ? 10 : cmd.count);
             crow::json::wvalue dis;
-            dis["pc"] = ("0x" + hexWord(cmd.addr));
+            dis["pc"] = ("0x" + cmd.addr);
             for (u32 i = 0; i < lines.size(); ++i) dis["lines"][i] = lines[i];
             out["disasm"] = std::move(dis);
             break;
@@ -226,10 +171,18 @@ bool WebServer::processOneCommand(Bus* bus)
             breakpoints_.erase(cmd.addr); out["type"] = "breakpoints"; break;
 
         case CommandType::GAMEGENIE_WRITE:
-            bus->write(cmd.addr, cmd.value);
+        {
+            if(cart->addGGCode(cmd.ggcode)) {
+                out["status"] = "success";
+                out["message"] = ("Wrote $" + std::to_string(cmd.value) + " to $" + std::to_string(cmd.addr));
+            } else {
+                out["status"] = "error";
+                out["error"] = "Failed to add Game Genie code. Check format and maximum code limit.";
+			}
+
             out["type"] = "gamegenie";
-            out["message"] = ("Wrote $" + hexByte(cmd.value) + " to $" + hexWord(cmd.addr) + " [" + getMemoryRegion(cmd.addr) + "]");
             break;
+        }
 
         default:
             out["error"] = "unknown command";
@@ -290,8 +243,9 @@ void WebServer::runLoop(int port)
             else if (cmd == "removeBreakpoint") { c.type = CommandType::REMOVE_BREAKPOINT; c.addr = (u16)(msg.has("addr") ? msg["addr"].i() : 0); }
             else if (cmd == "gamegenie") { 
             std::string ggcode = msg.has("code") ? msg["code"].s() : std::string();
-            if (!ggcode.empty() && decodeGameGenie(ggcode, c.addr, c.value)) {
+            if (!ggcode.empty()) {
                 c.type = CommandType::GAMEGENIE_WRITE;
+                c.ggcode = ggcode;
             } else {
                 // Invalid code, send error response
                 if (c.resp) {
@@ -302,7 +256,7 @@ void WebServer::runLoop(int port)
                 return;
             }
         }
-            else return;
+        else return;
 
             // Push command and wait for response (with timeout)
             pushCommand(c);
