@@ -127,7 +127,6 @@ private:
         u8 sprite_pixels[256];    // Sprite pixel values (0-3)
         u8 sprite_palettes[256];  // Sprite palette indices (4-7)
         bool sprite_priority[256]; // Sprite behind background flag
-        bool sprite_zero_hit[256]; // Sprite 0 potential hit positions
     };
     ScanlineData scanline_buffer;
 

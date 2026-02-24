@@ -262,7 +262,6 @@ void PPU::fillScanlineBuffer()
     u8 sprite_pixel = 0;
     u8 sprite_palette = 0;
     bool sprite_priority = false;
-    bool sprite_zero_rendering = false;
 
     if (mask & 0x10) {  // Show sprites
         for (int i = 0; i < sprite_count; i++) {
@@ -295,9 +294,8 @@ void PPU::fillScanlineBuffer()
                             sprite_priority = (secondary_oam[i].attr & 0x20) != 0;  // Priority bit
 
                             // Check if this is sprite 0
-                            if (i == 0 && sprite_zero_on_line) {
-                                sprite_zero_rendering = true;
-                            }
+                            if (i == 0 && sprite_zero_on_line && bg_pixel != 0 && sprite_pixel != 0 && x != 255 && !(status & 0x40))
+                                    status |= 0x40;  // Set sprite 0 hit flag
                         }
                     }
                 }
@@ -309,7 +307,6 @@ void PPU::fillScanlineBuffer()
     scanline_buffer.sprite_pixels[x] = sprite_pixel;
     scanline_buffer.sprite_palettes[x] = sprite_palette;
     scanline_buffer.sprite_priority[x] = sprite_priority;
-    scanline_buffer.sprite_zero_hit[x] = sprite_zero_rendering;
 }
 
 void PPU::renderScanlineBurst()
@@ -327,14 +324,6 @@ void PPU::renderScanlineBurst()
         u8 sprite_pixel = scanline_buffer.sprite_pixels[x];
         u8 sprite_palette = scanline_buffer.sprite_palettes[x];
         bool sprite_priority = scanline_buffer.sprite_priority[x];
-        bool sprite_zero_rendering = scanline_buffer.sprite_zero_hit[x];
-
-        // Sprite 0 hit detection
-        // Can only trigger once per frame and not at x=255
-        if (sprite_zero_rendering && bg_pixel != 0 && sprite_pixel != 0 &&
-            x != 255 && !(status & 0x40)) {
-            status |= 0x40;  // Set sprite 0 hit flag
-        }
 
         // Priority multiplexer
         u8 final_pixel;
