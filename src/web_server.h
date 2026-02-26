@@ -49,11 +49,10 @@ public:
     void pushCommand(Command cmd);
 
     // Called from main emulation thread to process at least one pending command. Returns true if a command was processed.
-    bool processOneCommand(Bus* bus, Cartridge* cart);
+    bool processOneCommand(Bus* bus);
 
 private:
     Bus* bus;
-    Cartridge* cartridge;
     std::thread server_thread;
     std::atomic<bool> running;
     Debugger* debugger_;

@@ -2,10 +2,9 @@
 #include "input.h"
 #include <cstring>
 #include <sstream>
-#include "mapper_004.h" // Add this include for MMC3 IRQ support
 
 Bus::Bus()
-    : input(nullptr), cartridge(nullptr), system_cycles(0), log_accesses(false)
+    : input(nullptr), system_cycles(0), log_accesses(false)
 {
     std::memset(ram, 0, sizeof(ram));
 
@@ -13,6 +12,38 @@ Bus::Bus()
     cpu.connect(this);
     ppu.connect(this, nullptr);
     apu.connect(this);
+}
+
+bool Bus::loadCartridge(const std::string& filepath)
+{
+    if (!cartridge.load(filepath)) return false;
+
+    // Reconnect components now that cartridge is available
+    cpu.connect(this);
+    ppu.connect(this, &cartridge);
+    apu.connect(this);
+
+    return true;
+}
+
+bool Bus::addGGCode(const std::string& code)
+{
+    return cartridge.addGGCode(code);
+}
+
+void Bus::removeGGCode(const std::string& code)
+{
+    cartridge.removeGGCode(code);
+}
+
+void Bus::flushSRAM()
+{
+    cartridge.flushSRAM();
+}
+
+void Bus::signalFrameComplete()
+{
+    cartridge.signalFrameComplete();
 }
 
 std::string Bus::getRegionName(u16 addr) const
@@ -92,14 +123,6 @@ void Bus::logAccess(MemAccess::Type type, u16 addr, u8 value)
     access_log.push_back(access);
 }
 
-void Bus::connect(Cartridge* cart)
-{
-    cartridge = cart;
-    cpu.connect(this);
-    ppu.connect(this, cart);
-    apu.connect(this);
-}
-
 void Bus::connectInput(Input* input_device)
 {
     input = input_device;
@@ -136,10 +159,10 @@ void Bus::clock()
     }
 
     // Handle IRQ from Mapper
-    if (cartridge->hasIRQ()) {
-        cartridge->clearIRQ();
+    if (cartridge.hasIRQ()) {
+        cartridge.clearIRQ();
         cpu.irq();
-	}
+    }
 
     system_cycles++;
 }
@@ -172,9 +195,7 @@ u8 Bus::read(u16 addr)
     }
     else if (addr >= 0x4020) {
         // Cartridge space ($6000-$FFFF handled by cartridge)
-        if (cartridge) {
-            data = cartridge->readPrg(addr);
-        }
+        data = cartridge.readPrg(addr);
     }
 
     logAccess(MemAccess::READ, addr, data);
@@ -211,8 +232,6 @@ void Bus::write(u16 addr, u8 data)
     }
     else if (addr >= 0x4020) {
         // Cartridge space ($6000-$FFFF: PRG RAM and mapper registers)
-        if (cartridge) {
-            cartridge->writePrg(addr, data);
-        }
+        cartridge.writePrg(addr, data);
     }
 }

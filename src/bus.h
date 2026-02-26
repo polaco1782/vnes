@@ -24,8 +24,8 @@ struct MemAccess {
 class Bus {
 public:
     Bus();
-
-    void connect(Cartridge* cart);
+    // Load a ROM into the internal cartridge and connect components
+    bool loadCartridge(const std::string& filepath);
     void reset();
 
     // Clock the entire system
@@ -39,6 +39,15 @@ public:
     CPU cpu;
     PPU ppu;
     APU apu;
+
+    // Access to internal cartridge
+    Cartridge* getCartridge() { return &cartridge; }
+
+    // Cartridge convenience wrappers
+    bool addGGCode(const std::string& code);
+    void removeGGCode(const std::string& code);
+    void flushSRAM();
+    void signalFrameComplete();
 
     // Input connection
     void connectInput(Input* input_device);
@@ -60,8 +69,8 @@ private:
     // Input device
     Input* input;
 
-    // Cartridge
-    Cartridge* cartridge;
+    // Cartridge owned by the bus
+    Cartridge cartridge;
 
     // System cycles
     u64 system_cycles;

@@ -8,9 +8,10 @@
 #include <sstream>
 #include <iomanip>
 #include <fstream>
+#include "romdb.h"
 
 WebServer::WebServer()
-    : running(false), debugger_(nullptr), bus(nullptr), cartridge(nullptr)
+    : running(false), debugger_(nullptr), bus(nullptr)
 {
 }
 
@@ -52,7 +53,7 @@ void WebServer::pushCommand(Command cmd)
     cmd_cv_.notify_one();
 }
 
-bool WebServer::processOneCommand(Bus* bus, Cartridge* cart)
+bool WebServer::processOneCommand(Bus* bus)
 {
     Command cmd;
     {
@@ -172,13 +173,13 @@ bool WebServer::processOneCommand(Bus* bus, Cartridge* cart)
 
         case CommandType::GAMEGENIE_WRITE:
         {
-            if(cart->addGGCode(cmd.ggcode)) {
+            if (bus->addGGCode(cmd.ggcode)) {
                 out["status"] = "success";
-                out["message"] = ("Wrote $" + std::to_string(cmd.value) + " to $" + std::to_string(cmd.addr));
+                out["message"] = ("Code " + cmd.ggcode + " added successfully.");
             } else {
                 out["status"] = "error";
                 out["error"] = "Failed to add Game Genie code. Check format and maximum code limit.";
-			}
+            }
 
             out["type"] = "gamegenie";
             break;
@@ -204,8 +205,15 @@ void WebServer::runLoop(int port)
 {
     crow::SimpleApp app;
 
+    // Initialize ROM database (downloads and seeds sqlite DB)
+    const std::string datUrl = "https://raw.githubusercontent.com/libretro/libretro-database/refs/heads/master/dat/Nintendo%20-%20Nintendo%20Entertainment%20System.dat";
+    const std::string dbPath = "nes_db.sqlite3";
+    if (!RomDB::init(datUrl, dbPath)) {
+        std::cerr << "Warning: RomDB initialization failed\n";
+    }
+
     // Serve static HTML only
-    app.route_dynamic("/")([this](const crow::request& /*req*/) {
+    app.route_dynamic("/")([](const crow::request& /*req*/) {
         std::ifstream ifs("web_debugger.html");
         if (!ifs) {
             crow::response r("<html><body><h1>web_debugger.html not found</h1></body></html>");
@@ -241,22 +249,8 @@ void WebServer::runLoop(int port)
             else if (cmd == "memory") { c.type = CommandType::MEMORY; c.addr = (u16)(msg.has("addr") ? msg["addr"].i() : 0); c.count = msg.has("count") ? msg["count"].i() : 256; }
             else if (cmd == "addBreakpoint") { c.type = CommandType::ADD_BREAKPOINT; c.addr = (u16)(msg.has("addr") ? msg["addr"].i() : 0); }
             else if (cmd == "removeBreakpoint") { c.type = CommandType::REMOVE_BREAKPOINT; c.addr = (u16)(msg.has("addr") ? msg["addr"].i() : 0); }
-            else if (cmd == "gamegenie") { 
-            std::string ggcode = msg.has("code") ? msg["code"].s() : std::string();
-            if (!ggcode.empty()) {
-                c.type = CommandType::GAMEGENIE_WRITE;
-                c.ggcode = ggcode;
-            } else {
-                // Invalid code, send error response
-                if (c.resp) {
-                    crow::json::wvalue error;
-                    error["error"] = "Invalid GameGenie code format. Use 6 characters (XXXXXX) or 8 characters (XXXXXXXX)";
-                    c.resp->set_value(error.dump());
-                }
-                return;
-            }
-        }
-        else return;
+			else if (cmd == "gamegenie") { c.type = CommandType::GAMEGENIE_WRITE; c.ggcode = msg.has("ggcode") ? msg["ggcode"].s() : std::string(); }
+            else return;
 
             // Push command and wait for response (with timeout)
             pushCommand(c);

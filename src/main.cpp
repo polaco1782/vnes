@@ -40,15 +40,11 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // Load ROM
-    Cartridge cartridge;
-    if (!cartridge.load(rom_file)) {
+    // Create system bus and load cartridge into it
+    Bus bus;
+    if (!bus.loadCartridge(rom_file)) {
         return 1;
     }
-
-    // Create system bus and connect cartridge
-    Bus bus;
-    bus.connect(&cartridge);
     bus.reset();
 
     std::cout << "\nSystem initialized!" << std::endl;
@@ -84,7 +80,7 @@ int main(int argc, char* argv[])
             std::cout << "\nEntering debugger (type 'c' or 'continue' to resume emulation, 'q' to quit)" << std::endl;
             
             // Flush SRAM when entering debugger
-            cartridge.flushSRAM();
+            bus.flushSRAM();
             
             debugger.run();
             in_debugger = false;
@@ -109,12 +105,12 @@ int main(int argc, char* argv[])
             bus.clearFrameComplete();
             
             // Notify cartridge that frame is complete (for SRAM auto-save)
-            cartridge.signalFrameComplete();
+            bus.signalFrameComplete();
             
             // Process any pending web commands queued by websocket handlers
             // Process multiple commands to avoid backlog but limit to avoid long stalls
             for (int i = 0; i < 100; ++i) {
-                if (!web.processOneCommand(&bus, &cartridge)) break;
+                if (!web.processOneCommand(&bus)) break;
             }
 
             // Update display
@@ -123,7 +119,7 @@ int main(int argc, char* argv[])
     }
     
     // Final SRAM flush on exit
-    cartridge.flushSRAM();
+    bus.flushSRAM();
     web.stop();
     
     std::cout << "Emulation stopped." << std::endl;

@@ -328,13 +328,13 @@ function removeBreakpoint(addrHex) {
 }
 
 function gamegenieWrite() {
-  let ggcode = document.getElementById('gg-code').value.trim().toUpperCase();
-  if (!ggcode) {
+  let code = document.getElementById('gg-code').value.trim().toUpperCase();
+  if (!code) {
     document.getElementById('gg-message').textContent = 'Please enter a Game Genie code';
     return;
   }
   
-  sendCommand({cmd: 'gamegenie', code: ggcode}).then(function(data) {
+  sendCommand({cmd: 'gamegenie', ggcode: code}).then(function(data) {
     if (data.error) {
       document.getElementById('gg-message').textContent = data.error;
     } else if (data.message) {

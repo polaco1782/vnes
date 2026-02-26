@@ -149,6 +149,7 @@
     <ClCompile Include="src\mapper_004.cpp" />
     <ClCompile Include="src\mapper_009.cpp" />
     <ClCompile Include="src\ppu.cpp" />
+    <ClCompile Include="src\romdb.cpp" />
     <ClCompile Include="src\sound.cpp" />
     <ClCompile Include="src\web_server.cpp" />
   </ItemGroup>
@@ -167,6 +168,7 @@
     <ClInclude Include="src\mapper_004.h" />
     <ClInclude Include="src\mapper_009.h" />
     <ClInclude Include="src\ppu.h" />
+    <ClInclude Include="src\romdb.h" />
     <ClInclude Include="src\sound.h" />
     <ClInclude Include="src\types.h" />
     <ClInclude Include="src\web_server.h" />

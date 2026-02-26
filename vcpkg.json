@@ -6,6 +6,9 @@
     {
       "name": "sfml",
       "features": ["graphics", "window", "audio"]
-    }
+    },
+    "curl",
+    "sqlite3",
+    "tinyxml2"
   ]
 }
