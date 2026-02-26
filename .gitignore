@@ -42,3 +42,4 @@ roms/
 # Core dumps
 core
 core.*
+/nes_db.sqlite3

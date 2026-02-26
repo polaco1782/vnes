@@ -27,15 +27,15 @@ std::unique_ptr<Mapper> MapperFactory::create(u8 mapperNumber)
 {
     switch (mapperNumber) {
         case 0:
-            return std::unique_ptr<Mapper>(new Mapper000());
+            return std::make_unique<Mapper000>();
         case 1:
-            return std::unique_ptr<Mapper>(new Mapper001());
+            return std::make_unique<Mapper001>();
         case 2:
-            return std::unique_ptr<Mapper>(new Mapper002());
+            return std::make_unique<Mapper002>();
         case 4:
-            return std::unique_ptr<Mapper>(new Mapper004());
+            return std::make_unique<Mapper004>();
         case 9:
-            return std::unique_ptr<Mapper>(new Mapper009());
+            return std::make_unique<Mapper009>();
         default:
             std::cerr << "Warning: Unsupported mapper " << (int)mapperNumber 
                       << ", falling back to mapper 0" << std::endl;
