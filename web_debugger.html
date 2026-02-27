@@ -58,6 +58,7 @@ a{color:#00d4ff;}
 <input type="text" id="disasm-addr" placeholder="Address (hex)">
 <input type="number" id="disasm-count" value="15" min="1" max="50">
 <button id="disasm-btn">Disassemble</button>
+<button id="toggle-disasm-btn">Toggle Auto-Disassemble</button>
 </div>
 <pre id="disasm-view">Click Disassemble or Step to see instructions...</pre>
 </div>
@@ -116,6 +117,9 @@ let ws = null;
 let pendingResolvers = [];
 let clientBreakpoints = []; // local list since server doesn't return full list
 const REFRESH_MS = 1000;
+let autoDisassemble = false; // New: automatic disassembly toggle
+let autoDisassembleAddr = 0; // New: address for auto disassembly
+let autoDisassembleCount = 15; // New: count for auto disassembly
 
 function connectWebSocket() {
   const proto = (location.protocol === 'https:') ? 'wss' : 'ws';
@@ -179,12 +183,17 @@ function dispatchMessage(data) {
     if (data.disasm) {
       document.getElementById('disasm-view').textContent = (data.disasm.lines || []).join('\n');
     }
-    // server currently doesn't provide ppu/apu/stack in getAll - ignore if absent
   } else if (data.type === 'cpu' && data.cpu) {
     updateCpu(data.cpu);
-    if (data.disasm) document.getElementById('disasm-view').textContent = (data.disasm.lines || []).join('\n');
+    if (data.disasm) {
+      document.getElementById('disasm-view').textContent = (data.disasm.lines || []).join('\n');
+    }
+    // New: trigger auto disassembly if enabled
+    if (autoDisassemble) {
+      sendCommand({cmd: 'disassemble', addr: autoDisassembleAddr, count: autoDisassembleCount});
+    }
   } else if (data.type === 'breakpoints') {
-    // no payload from server; rely on client-side list
+    // New: handle breakpoint updates
     updateBreakpoints({breakpoints: clientBreakpoints});
   } else if (data.pc && data.lines) {
     // disassemble response
@@ -333,7 +342,7 @@ function gamegenieWrite() {
     document.getElementById('gg-message').textContent = 'Please enter a Game Genie code';
     return;
   }
-  
+
   sendCommand({cmd: 'gamegenie', ggcode: code}).then(function(data) {
     if (data.error) {
       document.getElementById('gg-message').textContent = data.error;
@@ -344,10 +353,24 @@ function gamegenieWrite() {
     }
     // Clear input after successful write
     document.getElementById('gg-code').value = '';
-  }).catch(function(e){ 
+  }).catch(function(e){
     console.warn(e);
     document.getElementById('gg-message').textContent = 'Failed to apply Game Genie code';
   });
+}
+
+// New: Toggle auto-disassembly functionality
+function toggleAutoDisassemble() {
+  autoDisassemble = !autoDisassemble;
+  const btn = document.getElementById('toggle-disasm-btn');
+  if (autoDisassemble) {
+    btn.textContent = 'Stop Auto-Disassemble';
+    autoDisassembleAddr = parseInt(document.getElementById('disasm-addr').value || '0', 16);
+    autoDisassembleCount = parseInt(document.getElementById('disasm-count').value) || 15;
+    sendCommand({cmd: 'disassemble', addr: autoDisassembleAddr, count: autoDisassembleCount});
+  } else {
+    btn.textContent = 'Start Auto-Disassemble';
+  }
 }
 
 // Attach event listeners to buttons
@@ -359,6 +382,7 @@ document.getElementById('disasm-btn').addEventListener('click', disassembleAt);
 document.getElementById('readmem-btn').addEventListener('click', readMemory);
 document.getElementById('addbp-btn').addEventListener('click', addBreakpoint);
 document.getElementById('gg-btn').addEventListener('click', gamegenieWrite);
+document.getElementById('toggle-disasm-btn').addEventListener('click', toggleAutoDisassemble);
 
 // Start websocket and periodic refresh
 connectWebSocket();
