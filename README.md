@@ -4,6 +4,12 @@ A cycle-accurate NES emulator written in C++20, featuring hardware-accurate emul
 
 ---
 
+## Screenshots
+
+![Super Mario Bros. running in vNES](mario.png)
+
+---
+
 ## Features
 
 - **CPU** — Full MOS 6502 emulation (official opcodes)
