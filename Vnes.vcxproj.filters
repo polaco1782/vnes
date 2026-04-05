@@ -72,6 +72,12 @@
     <ClCompile Include="src\gui_console.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\hq2x.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\hqx.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\apu.h">
@@ -137,16 +143,15 @@
     <ClInclude Include="src\disasm.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\hq2x.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\hqx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="vcpkg.json" />
-    <None Include="web_debugger.html" />
-    <None Include="docs\dependency-injection-refactoring.md" />
-    <None Include="docs\architecture.md" />
-    <None Include="docs\refactoring-summary.md" />
-    <None Include="docs\before-after-comparison.md" />
-    <None Include="docs\final-refactoring-complete.md" />
-    <None Include="docs\input-as-bus-component.md" />
-    <None Include="docs\complete-refactoring-journey.md" />
+    <None Include="README.md" />
   </ItemGroup>
 </Project>

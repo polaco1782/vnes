@@ -3,7 +3,10 @@
 
 #include "types.h"
 #include <SFML/Graphics.hpp>
+#include <condition_variable>
+#include <mutex>
 #include <memory>
+#include <thread>
 #include <vector>
 #include "gui.h"
 #include "hq2x.h"
@@ -48,6 +51,10 @@ public:
     bool isEmulatorInGuiWindow() const { return gui_.isEmulatorInWindow(); }
 
 private:
+    void scalerThreadLoop();
+    void queueFrame(const u32* framebuffer);
+    bool consumeScaledFrame();
+
     static const int NES_WIDTH = 256;
     static const int NES_HEIGHT = 240;
     static const int HQ2X_SCALE = 2;
@@ -59,14 +66,24 @@ private:
     std::unique_ptr<sf::Sprite> sprite;
     std::vector<u8> pixels;
     std::vector<u32> scaled_framebuffer;
+    std::vector<u32> pending_framebuffer_;
+    std::vector<u8> completed_pixels_;
+    std::vector<u32> completed_scaled_framebuffer_;
     sf::Clock clock;
     Gui gui_;
     HQ2x scaler_;
+    std::thread scaler_thread_;
+    std::mutex scaler_mutex_;
+    std::condition_variable scaler_cv_;
 
     int window_width;
     int window_height;
     int scale_factor;
     bool escape_pressed;
+    bool stop_scaler_;
+    bool scale_requested_;
+    bool scaled_frame_ready_;
+    bool gui_texture_was_needed_;
 
     static constexpr float TARGET_FRAME_TIME = 1.0f / 60.0f; // 60 FPS
 };

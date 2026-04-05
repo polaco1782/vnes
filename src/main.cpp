@@ -153,10 +153,6 @@ int main(int argc, char* argv[])
         // Update display
         if (romLoaded) {
             display.update(bus.ppu.getFramebuffer());
-        } else {
-            // Show black screen when no ROM
-            static u32 blackScreen[256 * 240] = {0};
-            display.update(blackScreen);
         }
 
         // Handle Game Genie input from GUI (forwarded by Display)
