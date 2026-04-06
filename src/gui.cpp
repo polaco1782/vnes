@@ -8,9 +8,10 @@
 #include <imgui.h>
 #include <ImGui-SFML.h>
 #include <SFML/Graphics.hpp>
-#include <cstring>
-#include <cstdio>
 #include <algorithm>
+#include <charconv>
+#include <format>
+#include <string_view>
 #include <filesystem>
 #include <vector>
 
@@ -108,7 +109,6 @@ std::string Gui::disassembleInstruction(u16 addr, int& length) {
     AddrMode mode = addrModes[opcode];
     length = modeLengths[static_cast<int>(mode)];
 
-    char buf[64];
     const char* name = opcodeNames[opcode];
 
     u8 lo = (length > 1) ? bus_.read(addr + 1) : 0;
@@ -118,50 +118,35 @@ std::string Gui::disassembleInstruction(u16 addr, int& length) {
     switch (mode) {
         case AddrMode::IMP:
         case AddrMode::ACC:
-            snprintf(buf, sizeof(buf), "%s", name); 
-            break;
-        case AddrMode::IMM:  
-            snprintf(buf, sizeof(buf), "%s #$%02X", name, lo); 
-            break;
-        case AddrMode::ZP:   
-            snprintf(buf, sizeof(buf), "%s $%02X", name, lo); 
-            break;
-        case AddrMode::ZPX:  
-            snprintf(buf, sizeof(buf), "%s $%02X,X", name, lo); 
-            break;
-        case AddrMode::ZPY:  
-            snprintf(buf, sizeof(buf), "%s $%02X,Y", name, lo); 
-            break;
-        case AddrMode::ABS:  
-            snprintf(buf, sizeof(buf), "%s $%04X", name, absAddr); 
-            break;
-        case AddrMode::ABX:  
-            snprintf(buf, sizeof(buf), "%s $%04X,X", name, absAddr); 
-            break;
-        case AddrMode::ABY:  
-            snprintf(buf, sizeof(buf), "%s $%04X,Y", name, absAddr); 
-            break;
-        case AddrMode::IND:  
-            snprintf(buf, sizeof(buf), "%s ($%04X)", name, absAddr); 
-            break;
-        case AddrMode::IZX:  
-            snprintf(buf, sizeof(buf), "%s ($%02X,X)", name, lo); 
-            break;
-        case AddrMode::IZY:  
-            snprintf(buf, sizeof(buf), "%s ($%02X),Y", name, lo); 
-            break;
+            return name;
+        case AddrMode::IMM:
+            return std::format("{} #${:02X}", name, lo);
+        case AddrMode::ZP:
+            return std::format("{} ${:02X}", name, lo);
+        case AddrMode::ZPX:
+            return std::format("{} ${:02X},X", name, lo);
+        case AddrMode::ZPY:
+            return std::format("{} ${:02X},Y", name, lo);
+        case AddrMode::ABS:
+            return std::format("{} ${:04X}", name, absAddr);
+        case AddrMode::ABX:
+            return std::format("{} ${:04X},X", name, absAddr);
+        case AddrMode::ABY:
+            return std::format("{} ${:04X},Y", name, absAddr);
+        case AddrMode::IND:
+            return std::format("{} (${:04X})", name, absAddr);
+        case AddrMode::IZX:
+            return std::format("{} (${:02X},X)", name, lo);
+        case AddrMode::IZY:
+            return std::format("{} (${:02X}),Y", name, lo);
         case AddrMode::REL: {
             s8 offset = static_cast<s8>(lo);
             u16 target = static_cast<u16>(addr + 2 + offset);
-            snprintf(buf, sizeof(buf), "%s $%04X", name, target);
-            break;
+            return std::format("{} ${:04X}", name, target);
         }
-        default: 
-            snprintf(buf, sizeof(buf), "%s", name); 
-            break;
+        default:
+            return name;
     }
-
-    return std::string(buf);
 }
 
 void Gui::render(sf::RenderWindow& window) {
@@ -646,13 +631,12 @@ void Gui::renderOamViewer() {
 
                     ImGui::TableNextColumn();
                     // Decode attribute flags
-                    char flags[32];
-                    snprintf(flags, sizeof(flags), "Pal:%d %s %s %s",
+                    std::string flags = std::format("Pal:{} {} {} {}",
                         attr & 0x03,
                         (attr & 0x20) ? "BG" : "FG",
                         (attr & 0x40) ? "FlipH" : "",
                         (attr & 0x80) ? "FlipV" : "");
-                    if (visible) ImGui::Text("%s", flags); else ImGui::TextDisabled("%s", flags);
+                    if (visible) ImGui::Text("%s", flags.c_str()); else ImGui::TextDisabled("%s", flags.c_str());
                 }
                 ImGui::EndTable();
             }
@@ -680,15 +664,17 @@ void Gui::renderMemoryViewer() {
             // Address input
             ImGui::SetNextItemWidth(100);
             if (ImGui::InputText("Address", memorySearchAddr_, sizeof(memorySearchAddr_), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue)) {
-                int addr;
-                if (sscanf(memorySearchAddr_, "%x", &addr) == 1) {
-                    memoryViewAddress_ = addr & 0xFFF0;  // Align to 16
+                int addr = 0;
+                const std::string_view sv(memorySearchAddr_);
+                if (auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), addr, 16); ec == std::errc{}) {
+                    memoryViewAddress_ = addr & 0xFFF0;
                 }
             }
             ImGui::SameLine();
             if (ImGui::Button("Go")) {
-                int addr;
-                if (sscanf(memorySearchAddr_, "%x", &addr) == 1) {
+                int addr = 0;
+                const std::string_view sv(memorySearchAddr_);
+                if (auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), addr, 16); ec == std::errc{}) {
                     memoryViewAddress_ = addr & 0xFFF0;
                 }
             }
@@ -917,8 +903,8 @@ void Gui::renderFileDialog() {
         ImGui::Text("Path: %s", currentPath_.c_str());
 
         // Path input
-        strncpy(pathInput_, currentPath_.c_str(), sizeof(pathInput_) - 1);
-        pathInput_[sizeof(pathInput_) - 1] = '\0';
+        const size_t copied = currentPath_.copy(pathInput_, sizeof(pathInput_) - 1);
+        pathInput_[copied] = '\0';
         if (ImGui::InputText("##path", pathInput_, sizeof(pathInput_), ImGuiInputTextFlags_EnterReturnsTrue)) {
             if (std::filesystem::exists(pathInput_) && std::filesystem::is_directory(pathInput_)) {
                 currentPath_ = pathInput_;
